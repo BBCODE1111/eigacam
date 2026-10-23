@@ -1,0 +1,5 @@
+const CACHE='eigacam-studio-v4';
+const ASSETS=['./','./index.html','./src/style.css','./src/app.js','./src/model.js','./src/files.js','./src/presets.js','./src/curves.js','./src/engine/renderer.js','./src/engine/shaders.js','./assets/cafe.jpg','./assets/street.jpg','./assets/portrait.jpg','./assets/bar.jpg','./icon.svg','./manifest.webmanifest','./assets/icon-192.png','./assets/icon-512.png'];
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>(k.startsWith('luma-studio-')||k.startsWith('eigacam-studio-'))&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;const allowed=ASSETS.some(p=>new URL(p,self.registration.scope).pathname===u.pathname);if(!allowed)return;e.respondWith(fetch(e.request).then(r=>{if(r.ok&&!r.redirected)caches.open(CACHE).then(c=>c.put(e.request,r.clone()));return r;}).catch(()=>caches.match(e.request)));});
