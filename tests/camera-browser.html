@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>EIGACAM camera integration</title><style>body{background:#111;color:#ddd;font:14px monospace}iframe{width:390px;height:844px;border:1px solid #555}pre{white-space:pre-wrap}</style><h1>Synthetic camera integration (no physical camera)</h1><pre id="results">Running…</pre><iframe id="app"></iframe><script type="module">
+const out=document.querySelector('#results'),frame=document.querySelector('#app');let failures=0;out.textContent='';
+function check(ok,label){out.textContent+=(ok?'PASS ':'FAIL ')+label+'\n';if(!ok)failures++;}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));async function until(fn){for(let i=0;i<120;i++){if(fn())return;await wait(50);}throw Error('Timed out');}
+const fake=`<script>
+window.testStreams=[];window.testRequests=[];window.testDeny=false;
+const sensor=document.createElement('canvas');sensor.width=640;sensor.height=480;const ctx=sensor.getContext('2d');let tick=0;
+setInterval(()=>{tick++;ctx.fillStyle=tick%2?'#ad5731':'#548b9f';ctx.fillRect(0,0,640,480);ctx.fillStyle='#eee';ctx.fillRect((tick*30)%540,150,100,100);},60);
+Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async request=>{window.testRequests.push(request);if(window.testDeny)throw Object.assign(new Error('Denied'),{name:'NotAllowedError'});const stream=sensor.captureStream(24);const track=stream.getVideoTracks()[0],settings=track.getSettings.bind(track);track.getSettings=()=>({...settings(),facingMode:request.video.facingMode.ideal});window.testStreams.push(stream);return stream;}}});
+<\/script>`;
+try{
+ const html=await (await fetch('../dist/index.html')).text();frame.srcdoc=html.replace('<head>','<head><base href="'+location.origin+'/dist/">'+fake);
+ await until(()=>frame.contentDocument?.querySelector('#presets')?.children.length===5);
+ const doc=frame.contentDocument,win=frame.contentWindow,$=s=>doc.querySelector(s);
+ $('#startCamera').click();await until(()=>$('#camera').getAttribute('aria-label')==='拍攝照片'&&!$('#camera').disabled);
+ check($('#modeLabel').textContent.includes('LIVE'),'camera enters live graded preview');
+ check(win.testRequests[0].audio===false,'no microphone requested');
+ const before=$('#preview').toDataURL();await wait(300);check(before!==$('#preview').toDataURL(),'GPU preview updates with changing video frames');
+ check($('#exportTop').disabled,'live preview cannot export stale still');
+ $('#flipCamera').click();await until(()=>win.testStreams.length===2&&!$('#flipCamera').disabled);
+ check(win.testStreams[0].getTracks().every(t=>t.readyState==='ended'),'flip releases prior camera');
+ check(win.testRequests[1].video.facingMode.ideal==='user','front camera requested');
+ $('#camera').click();await until(()=>!$('#exportTop').disabled);
+ check($('#imageDimensions').textContent==='640 × 480','capture keeps full sensor dimensions');
+ check(win.testStreams.every(s=>s.getTracks().every(t=>t.readyState==='ended')),'capture stops every camera track');
+ check($('#modeLabel').textContent.includes('PHOTO'),'capture returns to photo editing');
+ $('#exportTop').click();check($('#exportDialog').open,'captured photo opens export dialog');$('#exportDialog').close();
+ win.testDeny=true;$('#camera').click();await until(()=>!$('#nativeCamera').hidden);
+ check(!$('#exportTop').disabled,'denied camera preserves captured photo');
+ check($('#cameraStatus').textContent.includes('權限'),'permission denial offers actionable fallback');
+ check(doc.documentElement.scrollHeight===doc.documentElement.clientHeight,'camera app has no page scroll');
+ out.textContent+='\n'+(failures?'FAILED':'ALL CHECKS PASSED');document.title=(failures?'FAIL':'PASS')+' — Camera integration';
+}catch(e){out.textContent+='ERROR '+e.stack;document.title='FAIL — Camera integration';}
+</script>

@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>EIGACAM — five looks proof</title><style>*{box-sizing:border-box}body{margin:0;padding:28px;background:#101211;color:#eee8db;font:13px system-ui}h1{font-size:24px}p{color:#aaa}main{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}figure{margin:0}img{width:100%;display:block;margin-bottom:12px}figcaption{font-size:14px;line-height:1.8;margin-bottom:10px}</style><h1>EIGACAM / 五種電影色彩</h1><p>相同照片實際通過調色引擎 · 預設 MIX · 非 AI 生成效果示意</p><main></main><script type="module">
+import {Renderer} from '../dist/src/engine/renderer.js';import {PRESETS,createState} from '../dist/src/presets.js';
+const host=document.querySelector('main'),canvas=document.createElement('canvas'),r=new Renderer(canvas);
+const sources=await Promise.all(['portrait','street'].map(async n=>{const i=new Image();i.src='../dist/assets/'+n+'.jpg';await i.decode();return i;}));
+for(const p of [{name:'原圖',id:null},...PRESETS]){const f=document.createElement('figure'),label=document.createElement('figcaption');label.textContent=p.name;f.append(label);host.append(f);for(const source of sources){const scale=420/Math.max(source.width,source.height);r.setSource(source,Math.round(source.width*scale),Math.round(source.height*scale));r.render(p.id?createState(p.id):{mix:1,exposure:0,layers:[]});const i=new Image();i.src=canvas.toDataURL('image/png');i.alt=p.name;f.append(i);}}
+r.destroy();document.title='PASS — Five looks proof';
+</script>

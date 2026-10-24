@@ -1,0 +1,326 @@
+[
+  {
+    "format": "eigacam-recipe",
+    "version": 1,
+    "state": {
+      "version": 1,
+      "revision": 2,
+      "id": "afterglow",
+      "name": "把餘光，留給昨天",
+      "description": "奶油金光、冷綠暗部，像一張留在記憶裡的照片。",
+      "colorSpace": "srgb",
+      "mix": 0.8,
+      "exposure": 0,
+      "layers": [
+        {
+          "id": "lmvm7di9td9bxnt",
+          "type": "tone",
+          "name": "基礎影調",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "exposure": 0,
+            "contrast": 1,
+            "highlights": -13,
+            "shadows": 5,
+            "whites": 0,
+            "blacks": -3,
+            "temperature": 4,
+            "tint": 0
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9t34orri",
+          "type": "color",
+          "name": "色彩與曲線",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "saturation": -13,
+            "curve": 0,
+            "shadowHue": 178,
+            "shadowSat": 14,
+            "highlightHue": 46,
+            "highlightSat": 18,
+            "orangeHue": 0,
+            "orangeSat": -5,
+            "orangeLum": 0,
+            "aquaHue": 0,
+            "aquaSat": -15,
+            "aquaLum": 0
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tiv6l5x",
+          "type": "shadow",
+          "name": "陰影層",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "threshold": 0.38,
+            "feather": 0.26,
+            "brightness": 0.005,
+            "contrast": 0.02,
+            "hue": 177,
+            "saturation": 0.09
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9t0k0jmp",
+          "type": "bloom",
+          "name": "高光層",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "threshold": 0.7,
+            "feather": 0.22,
+            "radius": 0.026,
+            "spread": 4,
+            "amount": 0.95,
+            "atmosphere": 0.22,
+            "halation": 0.2,
+            "hue": 42,
+            "saturation": 0.34,
+            "protect": 0.94
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tg07k94",
+          "type": "curves",
+          "name": "曲線",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "m0": 3,
+            "m1": 23,
+            "m2": 51,
+            "m3": 77,
+            "m4": 97,
+            "r0": 0,
+            "r1": 25,
+            "r2": 50,
+            "r3": 75,
+            "r4": 100,
+            "g0": 0,
+            "g1": 25,
+            "g2": 50,
+            "g3": 75,
+            "g4": 100,
+            "b0": 0,
+            "b1": 25,
+            "b2": 50,
+            "b3": 75,
+            "b4": 100
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tefsm8h",
+          "type": "soften",
+          "name": "細節柔化",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "radius": 0.0015,
+            "amount": 0.21
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tdvow0z",
+          "type": "grain",
+          "name": "底片顆粒",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "amount": 0.09,
+            "size": 3.5,
+            "roughness": 0.55
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tlxz995",
+          "type": "vignette",
+          "name": "暗角",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "amount": 0.1,
+            "range": 0.7,
+            "feather": 0.7,
+            "x": 0.5,
+            "y": 0.5
+          },
+          "masks": []
+        }
+      ]
+    }
+  },
+  {
+    "format": "eigacam-recipe",
+    "version": 1,
+    "state": {
+      "version": 1,
+      "revision": 2,
+      "id": "solar",
+      "name": "沒有犧牲，就沒有勝利",
+      "description": "金色輪廓光與冷青陰影，讓日常更有張力。",
+      "colorSpace": "srgb",
+      "mix": 0.8,
+      "exposure": 0,
+      "layers": [
+        {
+          "id": "lmvm7di9tqn64am",
+          "type": "tone",
+          "name": "基礎影調",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "exposure": 0,
+            "contrast": 22,
+            "highlights": -10,
+            "shadows": 0,
+            "whites": 0,
+            "blacks": -12,
+            "temperature": 2,
+            "tint": 0
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tlxnprs",
+          "type": "color",
+          "name": "色彩與曲線",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "saturation": 9,
+            "curve": 0,
+            "shadowHue": 199,
+            "shadowSat": 22,
+            "highlightHue": 40,
+            "highlightSat": 19,
+            "orangeHue": 0,
+            "orangeSat": -6,
+            "orangeLum": 0,
+            "aquaHue": -10,
+            "aquaSat": 7,
+            "aquaLum": 0
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9t4wf9o6",
+          "type": "shadow",
+          "name": "陰影層",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "threshold": 0.38,
+            "feather": 0.26,
+            "brightness": -0.025,
+            "contrast": 0.02,
+            "hue": 199,
+            "saturation": 0.13
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tb1xq0g",
+          "type": "bloom",
+          "name": "高光層",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "threshold": 0.7,
+            "feather": 0.22,
+            "radius": 0.026,
+            "spread": 4,
+            "amount": 0.38,
+            "atmosphere": 0.22,
+            "halation": 0.2,
+            "hue": 40,
+            "saturation": 0.45,
+            "protect": 0.94
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tmmqzi3",
+          "type": "curves",
+          "name": "曲線",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "m0": 0,
+            "m1": 17,
+            "m2": 50,
+            "m3": 81,
+            "m4": 99,
+            "r0": 0,
+            "r1": 25,
+            "r2": 50,
+            "r3": 75,
+            "r4": 100,
+            "g0": 0,
+            "g1": 25,
+            "g2": 50,
+            "g3": 75,
+            "g4": 100,
+            "b0": 0,
+            "b1": 25,
+            "b2": 50,
+            "b3": 75,
+            "b4": 100
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9ttjuruv",
+          "type": "soften",
+          "name": "細節柔化",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "radius": 0.0015,
+            "amount": 0
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9t15pvtz",
+          "type": "grain",
+          "name": "底片顆粒",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "amount": 0.026999999999999996,
+            "size": 2.6,
+            "roughness": 0.55
+          },
+          "masks": []
+        },
+        {
+          "id": "lmvm7di9tif6i24",
+          "type": "vignette",
+          "name": "暗角",
+          "enabled": true,
+          "strength": 1,
+          "params": {
+            "amount": 0.1,
+            "range": 0.7,
+            "feather": 0.7,
+            "x": 0.5,
+            "y": 0.5
+          },
+          "masks": []
+        }
+      ]
+    }
+  }
+]

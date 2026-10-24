@@ -43,6 +43,13 @@ export class Renderer {
     this.bind(1,this.base.tex);this.i('maskCount',0);this.i('maskView',0);
     if(this.gl.getError()!==this.gl.NO_ERROR)throw Error('影像記憶體不足，請選擇較小的尺寸。');
   }
+  updateSource(source,mirror=false){
+    if(!this.source||this.lost)return;
+    const c=this.videoBuffer??(this.videoBuffer=document.createElement('canvas'));
+    if(c.width!==this.width||c.height!==this.height){c.width=this.width;c.height=this.height;}
+    const x=c.getContext('2d',{colorSpace:'srgb'});x.setTransform(mirror?-1:1,0,0,1,mirror?c.width:0,0);x.drawImage(source,0,0,c.width,c.height);x.resetTransform();
+    const g=this.gl;this.bind(0,this.source);g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL,true);g.texSubImage2D(g.TEXTURE_2D,0,0,0,g.RGBA,g.UNSIGNED_BYTE,c);g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL,false);
+  }
   bind(unit,tex){const g=this.gl;g.activeTexture(g.TEXTURE0+unit);g.bindTexture(g.TEXTURE_2D,tex);}
   draw(op,source,target=null,aux=this.source,far=this.source,seed=this.source){
     const g=this.gl;this.i('op',op);this.bind(0,source);this.bind(1,target===this.base?this.source:this.base.tex);this.bind(2,aux);
