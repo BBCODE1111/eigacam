@@ -42,7 +42,7 @@ export function validateRecipe(raw){
       return mask;
     });return layer;
   });
-  return {version:1,revision:[2,3].includes(raw.revision)?raw.revision:1,id:String(raw.id||uid()).slice(0,80),name:String(raw.name||'自訂配方').slice(0,60),description:String(raw.description||'自訂色彩配方').slice(0,400),subtitle:String(raw.subtitle||'SRGB / FILM COLOR').slice(0,80),colorSpace:'srgb',mix:number(raw.mix??1,0,1,'Mix'),exposure:number(raw.exposure??0,-3,3,'曝光'),layers,ranges:effectRanges()};
+  return {version:1,revision:[2,3,4].includes(raw.revision)?raw.revision:1,id:String(raw.id||uid()).slice(0,80),name:String(raw.name||'自訂配方').slice(0,60),description:String(raw.description||'自訂色彩配方').slice(0,400),subtitle:String(raw.subtitle||'SRGB / FILM COLOR').slice(0,80),colorSpace:'srgb',mix:number(raw.mix??1,0,1,'Mix'),exposure:number(raw.exposure??0,-3,3,'曝光'),layers,ranges:effectRanges()};
 }
 export function effectRanges(){return Object.fromEntries(Object.entries(EFFECTS).map(([key,e])=>[key,Object.fromEntries(Object.entries(e.params).map(([p,s])=>[p,{min:s[1],max:s[2],step:s[3]}]))]));}
 export function outputDimensions(width,height,longEdge='original'){

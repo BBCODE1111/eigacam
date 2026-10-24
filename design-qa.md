@@ -43,3 +43,14 @@ The top action now reads 儲存照片. Opening it prepares the current JPEG befo
 [390px save dialog](docs/save-to-photos.png) visually checked. Download is a separate secondary action. Unsupported sharing and share failures reveal an ordinary image for browser long-press saving. Cancellation leaves the photo available without a download; successful share does not claim the photo was saved to an album because the browser cannot observe the chosen system destination.
 
 Validation: 21 unit tests pass. The browser delivery integration checks preparation, JPEG-only payload, correct dimensions, cancel/failure/unsupported states, explicit-only download, regeneration after size changes and fresh output after look edits. Synthetic-camera regression also passes with preparation of the captured photo. Native iPhone/Android share sheets and actual album writes were not automated or physically tested; available actions depend on OS/browser.
+
+
+## Clear subject / soft light update — 2026-10-24
+
+Revision 4 recipes default to no whole-frame soften. Pale Letter narrows bloom to brighter highlights, lowers atmospheric veil and black lift, and uses finer, weaker default grain. Other looks also remove default whole-frame soften and use explicit grain amounts; maximum grain strength and manual controls remain available. This preserves source detail rather than inventing it through sharpening.
+
+Camera requests higher ideal dimensions without forcing unsupported modes. It prefers feature-detected ImageCapture stills (bounded requested width), falls back to a lossless PNG at actual video dimensions, and encodes JPEG at final save. LIVE reports actual video dimensions. A system-camera input is always available in More. New photos default to original-size export when device/GPU limits allow it.
+
+Validation: 25 unit tests pass, including high-resolution constraints, still-capture support/failure and stale-result disposal. GPU, synthetic-camera and save/share browser suites pass. The new quality browser fixture compares revision 3 and 4 through the production renderer: fine-bar contrast 50.69 → 59.85 DN, dark-patch mean 62.51 → 45.61 DN, and highlight halo remains measurable (max 34.67 DN). These are synthetic fixture metrics, not a universal sharpness rating. Full-resolution same-source desk and portrait comparisons were visually inspected; eyes, hair, keyboard edges and dark density remain more legible with the revised pale look.
+
+User photographs and desk comparisons remain in ignored/local files and are excluded from publication. No physical phone was available for validation: negotiated camera resolution, native still support and system-camera routing must still be checked on the user's device. Higher requested dimensions do not guarantee native-camera quality, and existing low-resolution captures cannot recover missing detail.

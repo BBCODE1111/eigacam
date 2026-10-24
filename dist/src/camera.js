@@ -2,11 +2,11 @@
 export class CameraSession {
  constructor(mediaDevices,video){this.mediaDevices=mediaDevices;this.video=video;this.generation=0;this.stream=null;this.facing='environment';}
  stop(){this.generation++;this.stream?.getTracks().forEach(t=>t.stop());this.stream=null;this.video.pause();this.video.srcObject=null;}
- async start(facing='environment'){
+ async start(facing='environment',portrait=false){
   this.stop();const token=this.generation;
   if(!this.mediaDevices?.getUserMedia)throw Error('這個瀏覽器無法即時取景，請匯入照片或使用手機相機。');
   let stream;
-  try{stream=await this.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1440},frameRate:{ideal:24,max:30}}});}
+  try{stream=await this.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:portrait?2880:3840},height:{ideal:portrait?3840:2880},resizeMode:{ideal:'none'},frameRate:{ideal:24,max:30}}});}
   catch(e){if(token!==this.generation)return null;const messages={NotAllowedError:'相機權限未開啟。可到瀏覽器設定允許相機，或先匯入照片。',NotFoundError:'沒有可使用的相機，請匯入照片。',NotReadableError:'相機正在被其他程式使用，請關閉後再試。',OverconstrainedError:'此相機不支援要求的取景模式，請使用手機相機拍照。'};throw Error(messages[e.name]||'無法開啟相機，請再試一次或匯入照片。');}
   if(token!==this.generation){stream.getTracks().forEach(t=>t.stop());return null;}
   this.stream=stream;this.facing=stream.getVideoTracks()[0]?.getSettings?.().facingMode||facing;this.video.srcObject=stream;
@@ -14,5 +14,19 @@ export class CameraSession {
   catch(e){if(token===this.generation)this.stop();throw e;}
   return token===this.generation?stream:null;
  }
+ async takePhoto(ImageCaptureType=globalThis.ImageCapture){
+  const token=this.generation,track=this.stream?.getVideoTracks()[0];
+  if(!track||typeof ImageCaptureType!=='function')return null;
+  try{
+   const camera=new ImageCaptureType(track);if(typeof camera.takePhoto!=='function')return null;
+   let settings={};
+   try{const caps=await camera.getPhotoCapabilities?.();if(Number.isFinite(caps?.imageWidth?.max))settings.imageWidth=Math.min(4096,caps.imageWidth.max);if(caps?.fillLightMode?.includes('off'))settings.fillLightMode='off';}catch{}
+   if(token!==this.generation)return null;
+   const blob=await camera.takePhoto(settings);
+   if(token!==this.generation||!blob?.size||!['image/jpeg','image/png','image/webp'].includes(blob.type))return null;
+   return blob;
+  }catch{return null;} // Unsupported still capture keeps the full video-frame fallback available.
+ }
+
 }
 export function previewDimensions(width,height,maxEdge=960){const scale=Math.min(1,maxEdge/Math.max(width,height));return {width:Math.max(1,Math.round(width*scale)),height:Math.max(1,Math.round(height*scale))};}

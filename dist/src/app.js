@@ -51,7 +51,7 @@ function basicControls(){
  control(p,{id:'exposure',label:'曝光',min:-2,max:2,step:.05,value:state.exposure,set:v=>state.exposure=v,format:v=>(v>0?'+':'')+v.toFixed(2)+' EV'});
  for(const [key,name,min,max] of [['contrast','對比',-50,50],['temperature','冷暖',-50,50],['highlights','高光明度',-60,60],['shadows','陰影明度',-60,60]])control(p,{id:key,label:name,min,max,value:layer('tone').params[key],set:v=>layer('tone').params[key]=v,format:v=>(v>0?'+':'')+v});
  control(p,{id:'saturation',label:'飽和度',min:-100,max:60,value:layer('color').params.saturation,set:v=>layer('color').params.saturation=v,format:v=>(v>0?'+':'')+v});
- control(p,{id:'softness',label:'柔光質感',min:0,max:100,value:layer('soften').params.amount*100,set:v=>layer('soften').params.amount=v/100,format:v=>Math.round(v)+'%'});
+ control(p,{id:'softness',label:'整體柔化',min:0,max:100,value:layer('soften').params.amount*100,set:v=>layer('soften').params.amount=v/100,format:v=>Math.round(v)+'%'});
  compactControls(p,'exposure');
 }
 function grainControls(){
@@ -127,7 +127,7 @@ function updateAvailability(){
  $('exportTop').disabled=!source||live||cameraPending||loading||exporting;$('download').disabled=!preparedPhoto||exporting||sharing;
  $('camera').disabled=loading||exporting||cameraPending||shooting;$('camera').setAttribute('aria-label',live?'拍攝照片':'開啟相機');$('camera').classList.toggle('live',live);
  $('flipCamera').disabled=!live||cameraPending||shooting;$('leaveCamera').hidden=!live&&!cameraPending;$('fitView').disabled=!engine?.source;
- $('modeLabel').textContent=live?'LIVE / 即時套色':source?'PHOTO / 照片調色':'PHOTO / FILM COLOR';
+ $('modeLabel').textContent=live?`LIVE · ${video.videoWidth} × ${video.videoHeight}`:source?'PHOTO / 照片調色':'PHOTO / FILM COLOR';
 }
 function restoreStill(){
  if(source&&engine){const d=previewDimensions(source.width,source.height,1280);engine.setSource(source,d.width,d.height);$('imageFrame').hidden=false;$('empty').hidden=true;layout();draw();}
@@ -137,33 +137,43 @@ function stopCamera(restore=true){cameraAttempt++;live=false;cameraPending=false
 async function startCamera(facing='environment'){
  if(loading||exporting||cameraPending)return;const attempt=++cameraAttempt;cameraPending=true;$('cameraStatus').textContent='請允許相機權限，準備即時取景…';updateAvailability();
  try{
-  live=false;cancelAnimationFrame(cameraFrame);const stream=await cameraSession.start(facing);if(!stream||attempt!==cameraAttempt)return;
+  live=false;cancelAnimationFrame(cameraFrame);const stream=await cameraSession.start(facing,matchMedia('(orientation: portrait)').matches);if(!stream||attempt!==cameraAttempt)return;
   if(!engine)engine=new Renderer($('preview'));
   const d=previewDimensions(video.videoWidth,video.videoHeight,960);engine.setSource(video,d.width,d.height);
   live=true;$('imageFrame').hidden=false;$('empty').hidden=true;$('failure').hidden=true;closePanel();layout();
   stream.getVideoTracks().forEach(t=>t.onended=()=>{if(live){stopCamera();toast('相機已停止，可重新開啟或匯入照片');}});
-  const loop=t=>{if(!live)return;try{if(video.readyState>=2&&t-lastCameraFrame>80){lastCameraFrame=t;const size=previewDimensions(video.videoWidth,video.videoHeight,960);if(engine.width!==size.width||engine.height!==size.height){engine.setSource(video,size.width,size.height);layout();}engine.updateSource(video,cameraSession.facing==='user');draw();}cameraFrame=requestAnimationFrame(loop);}catch(e){stopCamera();toast(e.message);}};cameraFrame=requestAnimationFrame(loop);
+  const loop=t=>{if(!live)return;try{if(video.readyState>=2&&t-lastCameraFrame>80){lastCameraFrame=t;const size=previewDimensions(video.videoWidth,video.videoHeight,960);if(engine.width!==size.width||engine.height!==size.height){engine.setSource(video,size.width,size.height);layout();updateAvailability();}engine.updateSource(video,cameraSession.facing==='user');draw();}cameraFrame=requestAnimationFrame(loop);}catch(e){stopCamera();toast(e.message);}};cameraFrame=requestAnimationFrame(loop);
  }catch(e){if(attempt!==cameraAttempt)return;stopCamera();$('cameraStatus').textContent=e.message;$('nativeCamera').hidden=false;toast(e.message);}
  finally{if(attempt===cameraAttempt){cameraPending=false;updateAvailability();}}
 }
 async function capture(){
  if(!live){await startCamera();return;}if(shooting||loading||exporting)return;shooting=true;updateAvailability();
- try{const c=document.createElement('canvas');c.width=video.videoWidth;c.height=video.videoHeight;const x=c.getContext('2d');if(cameraSession.facing==='user'){x.translate(c.width,0);x.scale(-1,1);}x.drawImage(video,0,0,c.width,c.height);const blob=await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('拍攝失敗，請再試一次')),'image/jpeg',.98));stopCamera(false);await openPhoto(new File([blob],`PHOTO-${Date.now()}.jpg`,{type:'image/jpeg'}),'剛拍下的這一刻');toast('已拍攝，繼續調色或匯出照片');}
- catch(e){toast(e.message);}finally{shooting=false;updateAvailability();}
+ const attempt=cameraAttempt,mirror=cameraSession.facing==='user';
+ try{
+  let blob=await cameraSession.takePhoto();if(attempt!==cameraAttempt||!live)return;
+  if(!blob||mirror){
+   const decoded=blob?await decodePhoto(blob):null;if(attempt!==cameraAttempt||!live){if(decoded)decoded.width=decoded.height=1;return;}
+   const c=document.createElement('canvas');c.width=decoded?.width||video.videoWidth;c.height=decoded?.height||video.videoHeight;const x=c.getContext('2d');if(mirror){x.translate(c.width,0);x.scale(-1,1);}x.drawImage(decoded||video,0,0,c.width,c.height);
+   // Preserve the captured frame losslessly; JPEG is encoded once, at final save.
+   blob=await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('拍攝失敗，請再試一次')),'image/png'));c.width=c.height=1;if(decoded)decoded.width=decoded.height=1;
+  }
+  if(attempt!==cameraAttempt||!live)return;
+  const extension={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[blob.type];stopCamera(false);await openPhoto(new File([blob],`PHOTO-${Date.now()}.${extension}`,{type:blob.type}),'剛拍下的這一刻');toast('已拍攝，繼續調色或儲存照片');
+ }catch(e){toast(e.message);}finally{shooting=false;updateAvailability();}
 }
 async function openPhoto(file,name=file.name){
  if(loading||exporting)return;stopCamera(false);loading=true;const seq=++loadSequence;$('loading').hidden=false;$('failure').hidden=true;updateAvailability();
  try{
   const next=await decodePhoto(file);if(seq!==loadSequence){next.width=next.height=1;return;}
   if(!engine)engine=new Renderer($('preview'));const d=previewDimensions(next.width,next.height,1280);engine.setSource(next,d.width,d.height);
-  if(source)source.width=source.height=1;source=next;sourceFile=file;$('imageName').textContent=name;$('imageDimensions').textContent=`${next.originalWidth} × ${next.originalHeight}`;
+  if(source)source.width=source.height=1;source=next;sourceFile=file;$('imageName').textContent=name;$('imageDimensions').textContent=`${next.originalWidth} × ${next.originalHeight}`;const full=outputDimensions(next.originalWidth,next.originalHeight,'original');$('exportSize').value=full.width<=engine.maxSize&&full.height<=engine.maxSize&&full.width*full.height<=engine.pixelLimit?'original':'3840';
   held=false;split=false;$('imageFrame').hidden=false;$('empty').hidden=true;closePanel();layout();draw();
   const thumb=document.createElement('canvas');thumb.width=80;thumb.height=80;const x=thumb.getContext('2d'),size=Math.min(next.width,next.height);x.drawImage(next,(next.width-size)/2,(next.height-size)/2,size,size,0,0,80,80);$('albumThumb').src=thumb.toDataURL('image/jpeg',.8);$('albumThumb').classList.add('has-photo');
  }catch(e){restoreStill();throw e;}
  finally{loading=false;$('loading').hidden=true;updateAvailability();}
 }
 $('upload').onclick=()=>$('photoInput').click();$('emptyUpload').onclick=$('upload').onclick;$('camera').onclick=capture;$('startCamera').onclick=()=>startCamera();$('leaveCamera').onclick=()=>stopCamera();$('flipCamera').onclick=()=>startCamera(cameraSession.facing==='user'?'environment':'user');
-$('nativeCamera').onclick=()=>$('captureInput').click();
+const systemCapture=()=>{if(shooting||loading||exporting)return;stopCamera();$('captureInput').click();};$('nativeCamera').onclick=systemCapture;$('systemCamera').onclick=systemCapture;
 for(const id of ['photoInput','captureInput'])$(id).onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';if(file){await openPhoto(file);toast('已套用「'+state.name+'」');}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(live||cameraPending))stopCamera();});window.addEventListener('pagehide',()=>stopCamera(false));
 let dragDepth=0;document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>e.preventDefault());
