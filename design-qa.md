@@ -35,3 +35,11 @@ Intentional adaptations: existing EIGACAM logo and real Tabler icons; actual imp
 - Browser console showed no errors in the final local app check.
 
 Limitations: no physical iPhone/Android camera was used. Synthetic video validates the application flow, not device-specific camera quality, performance, permissions UI or mobile Safari behavior. Browser camera images use the stream's actual resolution; full-quality native-camera photos can be imported.
+
+## Photo album saving update — 2026-10-24
+
+The top action now reads 儲存照片. Opening it prepares the current JPEG before enabling 儲存／分享照片. The native share call executes directly in the subsequent tap handler, with a File-only payload. This follows [WebKit user activation guidance](https://webkit.org/blog/13862/the-user-activation-api/) and [Web Share file support checks](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/canShare).
+
+[390px save dialog](docs/save-to-photos.png) visually checked. Download is a separate secondary action. Unsupported sharing and share failures reveal an ordinary image for browser long-press saving. Cancellation leaves the photo available without a download; successful share does not claim the photo was saved to an album because the browser cannot observe the chosen system destination.
+
+Validation: 21 unit tests pass. The browser delivery integration checks preparation, JPEG-only payload, correct dimensions, cancel/failure/unsupported states, explicit-only download, regeneration after size changes and fresh output after look edits. Synthetic-camera regression also passes with preparation of the captured photo. Native iPhone/Android share sheets and actual album writes were not automated or physically tested; available actions depend on OS/browser.

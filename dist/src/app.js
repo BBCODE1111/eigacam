@@ -3,11 +3,13 @@ import {decodePhoto,download,jsonBlob,readJSON} from './files.js';
 import {clone,History,validateRecipe,outputDimensions} from './model.js';
 import {PRESETS,createState,findLayer,safeState} from './presets.js';
 import {CameraSession,previewDimensions} from './camera.js';
+import {canSharePhoto,sharePhoto} from './photo-delivery.js';
 import {sampleCurve} from './curves.js';
 
 const $=id=>document.getElementById(id);
 let state=createState(),history=new History(state),source,sourceFile,engine,loading=false,exporting=false,split=false,held=false,grainHeld=false,frame=0,channel='m',toastTimer,loadSequence=0;
 let live=false,cameraPending=false,cameraFrame=0,lastCameraFrame=0,fillView=false,activePanel='',lastTool=null,shooting=false,cameraAttempt=0;
+let preparedPhoto=null,preparedURL='',sharing=false;
 const video=$('cameraVideo'),cameraSession=new CameraSession(navigator.mediaDevices,video);
 function compactControls(parent,key){
  const controls=[...parent.querySelectorAll('.control')];if(!controls.length)return;
@@ -122,7 +124,7 @@ function layout(){
 new ResizeObserver(layout).observe($('stage'));
 $('fitView').onclick=()=>{fillView=!fillView;$('cameraApp').classList.toggle('fit-fill',fillView);$('fitView').setAttribute('aria-pressed',fillView);$('fitView').textContent=fillView?'滿版檢視':'完整構圖';layout();if(fillView)toast('滿版只放大預覽，匯出仍保留完整照片');};
 function updateAvailability(){
- $('exportTop').disabled=!source||live||cameraPending||loading||exporting;$('download').disabled=!source||exporting;
+ $('exportTop').disabled=!source||live||cameraPending||loading||exporting;$('download').disabled=!preparedPhoto||exporting||sharing;
  $('camera').disabled=loading||exporting||cameraPending||shooting;$('camera').setAttribute('aria-label',live?'拍攝照片':'開啟相機');$('camera').classList.toggle('live',live);
  $('flipCamera').disabled=!live||cameraPending||shooting;$('leaveCamera').hidden=!live&&!cameraPending;$('fitView').disabled=!engine?.source;
  $('modeLabel').textContent=live?'LIVE / 即時套色':source?'PHOTO / 照片調色':'PHOTO / FILM COLOR';
@@ -175,14 +177,41 @@ const release=()=>{held=false;render();};$('hold').onpointerdown=e=>{e.preventDe
 $('saveRecipe').onclick=()=>{download(jsonBlob({format:'eigacam-recipe',version:1,state}),`EIGACAM-${state.name}.json`);toast('配方已下載，不包含照片');};
 $('loadRecipe').onclick=()=>$('recipeInput').click();$('recipeInput').onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;const next=validateRecipe(safeState(await readJSON(file)));for(const type of ['tone','color','shadow','bloom','curves','soften','grain','vignette'])if(next.layers.filter(l=>l.type===type).length!==1)throw Error('配方缺少必要圖層，請使用 EIGACAM 匯出的配方。');for(const c of ['m','r','g','b'])for(let i=1;i<5;i++)if(findLayer(next,'curves').params[c+i]<findLayer(next,'curves').params[c+(i-1)])throw Error('曲線控制點必須維持明暗順序。');state=next;commit();refresh();toast('配方已套用');});
 function dims(){return outputDimensions(source.originalWidth,source.originalHeight,$('exportSize').value);}
-function outputInfo(){if(!source)return;const d=dims(),limited=d.width>engine.maxSize||d.height>engine.maxSize||d.width*d.height>engine.pixelLimit;$('outputInfo').textContent=`${d.width.toLocaleString()} × ${d.height.toLocaleString()} px · 不放大原圖${limited?' · 超出此裝置範圍，請選較小尺寸':''}`;$('download').disabled=limited||exporting;}
-$('exportTop').onclick=()=>{if(!source)return;$('exportStatus').textContent='';$('exportProgress').hidden=true;outputInfo();$('exportDialog').showModal();};$('exportSize').onchange=outputInfo;
-$('download').onclick=guard(async()=>{
- if(!source||exporting)return;exporting=true;const snapshot=clone(state),file=sourceFile,d=dims(),q=Number($('quality').value);updateAvailability();$('exportProgress').hidden=false;let exporter,decoded;
- try{const canvas=document.createElement('canvas');exporter=new Renderer(canvas);$('exportStatus').textContent='正在準備原始照片…';decoded=await decodePhoto(file,{target:d,maxEdge:exporter.maxSize,maxPixels:exporter.pixelLimit});exporter.setSource(decoded,d.width,d.height);await exporter.export(snapshot,v=>{$('exportProgress').value=v;$('exportStatus').textContent=`正在處理光影 · ${Math.round(v)}%`;});const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('照片編碼失敗，請降低尺寸。')),'image/jpeg',q));download(blob,`EIGACAM-${snapshot.name}-${file.name.replace(/\.[^.]+$/,'')}.jpg`);$('exportProgress').value=100;$('exportStatus').textContent=`已下載 · ${d.width} × ${d.height} px`;toast('照片已匯出，請查看下載項目');}
- catch(e){$('exportStatus').textContent=e.message;throw e;}
- finally{exporter?.destroy();if(decoded)decoded.width=decoded.height=1;exporting=false;updateAvailability();outputInfo();}
-});
+function outputInfo(){if(!source)return true;const d=dims(),limited=d.width>engine.maxSize||d.height>engine.maxSize||d.width*d.height>engine.pixelLimit;$('outputInfo').textContent=`${d.width.toLocaleString()} × ${d.height.toLocaleString()} px · 不放大原圖${limited?' · 超出此裝置範圍，請選較小尺寸':''}`;return limited;}
+function deliveryControls(){
+ const busy=exporting||sharing;$('savePhoto').disabled=busy;$('download').disabled=!preparedPhoto||busy;
+ $('exportSize').disabled=busy;$('quality').disabled=busy;
+ $('savePhoto').textContent=exporting?'正在準備照片…':sharing?'分享選單已開啟…':!preparedPhoto?'重新準備照片':canSharePhoto(preparedPhoto)?'儲存／分享照片':'顯示照片以儲存';
+}
+function showSaveFallback(message){$('saveFallback').hidden=false;$('exportStatus').textContent=message;}
+async function preparePhoto(){
+ if(!source||exporting||sharing)return;
+ preparedPhoto=null;if(preparedURL)URL.revokeObjectURL(preparedURL);preparedURL='';$('savePreview').removeAttribute('src');$('saveFallback').hidden=true;
+ $('exportStatus').textContent='';$('exportProgress').hidden=true;
+ if(outputInfo()){$('exportStatus').textContent='請選擇較小的照片尺寸，再試一次。';deliveryControls();return;}
+ exporting=true;const snapshot=clone(state),file=sourceFile,d=dims(),q=Number($('quality').value);updateAvailability();deliveryControls();$('exportProgress').value=0;$('exportProgress').hidden=false;let exporter,decoded;
+ try{const canvas=document.createElement('canvas');exporter=new Renderer(canvas);$('exportStatus').textContent='正在準備原始照片…';decoded=await decodePhoto(file,{target:d,maxEdge:exporter.maxSize,maxPixels:exporter.pixelLimit});exporter.setSource(decoded,d.width,d.height);await exporter.export(snapshot,v=>{$('exportProgress').value=v;$('exportStatus').textContent=`正在處理光影 · ${Math.round(v)}%`;});const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('照片編碼失敗，請降低尺寸。')),'image/jpeg',q));
+  preparedPhoto=new File([blob],`EIGACAM-${snapshot.name}-${file.name.replace(/\.[^.]+$/,'')}.jpg`,{type:'image/jpeg'});preparedURL=URL.createObjectURL(preparedPhoto);$('savePreview').src=preparedURL;
+  $('exportProgress').value=100;$('exportStatus').textContent=`照片已準備好 · ${d.width} × ${d.height} px`;
+  if(!canSharePhoto(preparedPhoto))showSaveFallback('此瀏覽器不支援照片分享，可長按下方照片儲存。');
+ }catch(e){$('exportStatus').textContent=e.message||'照片準備失敗，請再試一次。';}
+ finally{exporter?.destroy();if(decoded)decoded.width=decoded.height=1;exporting=false;$('exportProgress').hidden=true;updateAvailability();deliveryControls();}
+}
+$('exportTop').onclick=()=>{if(!source)return;$('exportDialog').showModal();preparePhoto();};$('exportSize').onchange=preparePhoto;$('quality').onchange=preparePhoto;
+$('savePhoto').onclick=async()=>{
+ if(exporting||sharing)return;if(!preparedPhoto){preparePhoto();return;}
+ if(!canSharePhoto(preparedPhoto)){showSaveFallback('長按照片，選擇儲存影像。可用選項依瀏覽器而定。');return;}
+ sharing=true;deliveryControls();
+ try{
+  // No encoding or asynchronous work before this call: preserve iOS user activation.
+  const result=await sharePhoto(preparedPhoto);
+  if(result.status==='cancelled')$('exportStatus').textContent='已取消分享，照片仍留在這裡。';
+  else if(result.status==='unsupported')showSaveFallback('此瀏覽器無法分享照片，請長按下方照片儲存。');
+  else $('exportStatus').textContent='已交給系統分享選單。是否存入相簿，請到「照片」確認。';
+ }catch{showSaveFallback('無法開啟分享選單，可重試或長按下方照片儲存。');}
+ finally{sharing=false;deliveryControls();}
+};
+$('download').onclick=()=>{if(!preparedPhoto||exporting||sharing)return;download(preparedPhoto,preparedPhoto.name);$('exportStatus').textContent='已下載到檔案。要存入相簿，請使用上方儲存／分享。';};
 $('about').onclick=()=>$('aboutDialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 $('retry').onclick=()=>location.reload();$('preview').addEventListener('engine-error',e=>{$('failure').hidden=false;$('failureText').textContent=e.detail;});
 refresh();updateAvailability();

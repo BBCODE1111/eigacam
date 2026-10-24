@@ -14,3 +14,5 @@
 .camera-app[data-panel="mix"] #panel-mix{flex:1;margin-right:32px}
 .camera-app[data-panel="mix"] .mix-block{gap:10px}
 .camera-app[data-panel="mix"] .mix-block label{color:var(--text);font-size:12px;letter-spacing:1px}
+
+#savePreview{display:block;max-height:220px;width:100%;object-fit:contain;border-radius:8px;-webkit-touch-callout:default;user-select:auto}#saveFallback{margin-top:12px}#saveHint{line-height:1.7}

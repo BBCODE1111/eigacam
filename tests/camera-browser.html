@@ -24,7 +24,7 @@ try{
  check($('#imageDimensions').textContent==='640 × 480','capture keeps full sensor dimensions');
  check(win.testStreams.every(s=>s.getTracks().every(t=>t.readyState==='ended')),'capture stops every camera track');
  check($('#modeLabel').textContent.includes('PHOTO'),'capture returns to photo editing');
- $('#exportTop').click();check($('#exportDialog').open,'captured photo opens export dialog');$('#exportDialog').close();
+ $('#exportTop').click();check($('#exportDialog').open,'captured photo opens export dialog');await until(()=>!$('#savePhoto').disabled);check(!$('#download').disabled,'captured photo is prepared for saving');$('#exportDialog').close();
  win.testDeny=true;$('#camera').click();await until(()=>!$('#nativeCamera').hidden);
  check(!$('#exportTop').disabled,'denied camera preserves captured photo');
  check($('#cameraStatus').textContent.includes('權限'),'permission denial offers actionable fallback');
