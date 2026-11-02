@@ -116,9 +116,9 @@ export class Renderer {
     g.uniform1f(this.loc('sharpen'), s.sharpen ?? 0); g.uniform1f(this.loc('strength'), s.strength ?? 1);
     g.uniform1f(this.loc('grainAmount'), s.grain ?? 0); g.uniform1f(this.loc('grainSize'), s.grainSize ?? 1.5);
     g.uniform2f(this.loc('grainSeed'), ...(s.grainSeed ?? [0, 0])); g.uniform1f(this.loc('vignette'), s.vignette ?? 0);
-    const masks = packMasks(s.masks);
+    const masks = packMasks(s.masks, s.maskView || null);
     g.uniform1i(this.loc('maskCount'), masks.count); g.uniform1f(this.loc('srcAspect'), this.sourceWidth / this.sourceHeight);
-    g.uniform1i(this.loc('maskView'), s.maskView ?? 0);
+    g.uniform1i(this.loc('maskView'), masks.view);
     for (const k of ['a', 'b', 'c', 'd']) g.uniform4fv(this.loc(`m${k.toUpperCase()}[0]`), masks[k]);
     g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, this.sourceTexture);
     this.pass(0, null);

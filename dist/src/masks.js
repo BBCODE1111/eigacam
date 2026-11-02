@@ -63,8 +63,9 @@ export function isNeutral(mask) {return ['ev', 'temp', 'tint', 'sat', 'contrast'
 
 // Packs masks into four vec4 uniform arrays for the shader.
 // a: type, invert, geometry…  b: geometry…  c: ev, temp, tint, sat  d: contrast, hue, amount, 0
-export function packMasks(masks) {
- const live = (masks ?? []).filter(m => m.enabled && !isNeutral(m)).slice(0, MAX_MASKS);
+// viewId: a mask whose selection should be shown even before it has any adjustment.
+export function packMasks(masks, viewId = null) {
+ const live = (masks ?? []).filter(m => m.id === viewId || (m.enabled && !isNeutral(m))).slice(0, MAX_MASKS);
  const a = new Float32Array(MAX_MASKS * 4), b = new Float32Array(MAX_MASKS * 4), c = new Float32Array(MAX_MASKS * 4), d = new Float32Array(MAX_MASKS * 4);
  live.forEach((m, i) => {
   const o = i * 4, type = ['linear', 'radial', 'luma', 'color'].indexOf(m.type);
@@ -74,5 +75,6 @@ export function packMasks(masks) {
   c.set([m.adj.ev, m.adj.temp / 100, m.adj.tint / 100, m.adj.sat / 100], o);
   d.set([m.adj.contrast / 100, m.adj.hue / 360, m.adj.amount / 100, 0], o);
  });
- return {count: live.length, a, b, c, d};
+ live.forEach((m, i) => {if (!m.enabled) {c.fill(0, i * 4, i * 4 + 4); d.fill(0, i * 4, i * 4 + 4);}}); // shown but switched off
+ return {count: live.length, a, b, c, d, view: viewId ? live.findIndex(m => m.id === viewId) + 1 : 0};
 }

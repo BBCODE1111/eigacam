@@ -173,3 +173,36 @@ button:focus-visible,[role=slider]:focus-visible{outline:2px solid var(--amber);
 #toast{position:fixed;left:50%;top:calc(var(--safe-t) + 52px);z-index:20;max-width:min(88vw,420px);padding:10px 16px;border-radius:10px;background:rgba(28,27,25,.94);color:var(--text);font-size:13px;line-height:1.45;text-align:center;opacity:0;transform:translate(-50%,-8px);transition:opacity .2s,transform .2s;pointer-events:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 #toast.visible{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---------- mask studio ---------- */
+.studio .params,.app.studio .deck > .params,.app.studio .context{display:none}
+.app.studio .deck > .params,.app.studio .deck > .context{display:none!important}
+.studio{display:grid;gap:6px;min-width:0;padding:0 0 2px}
+.studio-head{display:flex;align-items:center;gap:12px;padding:2px 14px}
+.studio-head b{flex:1;min-width:0;font-size:13px;font-weight:600;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.studio-head .link{font-size:13px}
+.pill{padding:6px 14px;border-radius:999px;background:var(--text);color:#000;font-size:13px;font-weight:600}
+.mask-list{display:flex;gap:6px;overflow-x:auto;padding:2px 14px;scrollbar-width:none}
+.mask-list::-webkit-scrollbar,.mask-actions::-webkit-scrollbar{display:none}
+.mask-chip{flex:0 0 auto;display:grid;gap:1px;min-width:70px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);text-align:left}
+.mask-chip span{font:600 9px var(--mono);letter-spacing:.12em;color:var(--dim)}
+.mask-chip strong{font-size:13px;font-weight:600;white-space:nowrap}
+.mask-chip.active{border-color:var(--amber);background:#17130c}
+.mask-chip.active span{color:var(--amber)}
+.mask-chip.off strong{opacity:.45;text-decoration:line-through}
+.mask-chip.add{border-style:dashed;background:none}
+.mask-chip.add strong{color:var(--dim);font-weight:500}
+.mask-actions{display:flex;gap:6px;overflow-x:auto;padding:0 14px;scrollbar-width:none}
+.mask-actions button{flex:0 0 auto;padding:6px 11px;border-radius:999px;border:1px solid var(--line);font-size:12px;color:var(--text)}
+.mask-actions [aria-pressed=true]{border-color:var(--amber);color:var(--amber)}
+.mask-params{padding:0 10px}
+.studio .dial{height:62px;padding:0 14px}
+.studio-hint{margin:6px 14px;color:var(--dim);font-size:13px;text-align:center}
+.handles{position:absolute;inset:0;pointer-events:none}
+.handles svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.handles line{stroke:rgba(255,255,255,.85);stroke-width:1.5;stroke-dasharray:4 4;vector-effect:non-scaling-stroke}
+.handles .ring{position:absolute;border:1.5px dashed rgba(255,255,255,.85);border-radius:50%}
+.handle{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;pointer-events:auto;touch-action:none;cursor:grab;
+ background:radial-gradient(circle,#fff 0 5px,rgba(255,179,64,.95) 5.5px 7px,rgba(0,0,0,.25) 7.5px 15px)}
+.handle[data-label]::after{content:attr(data-label);position:absolute;left:50%;top:32px;transform:translateX(-50%);font:600 10px var(--mono);color:#fff;text-shadow:0 1px 3px #000;white-space:nowrap}
+@media (orientation:landscape) and (max-height:560px){.studio{overflow-y:auto}.studio .dial{height:56px}}

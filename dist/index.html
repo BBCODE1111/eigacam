@@ -12,6 +12,7 @@
   <div id="frame" class="frame">
    <canvas id="preview" aria-label="即時調色取景"></canvas>
    <div id="matte" class="matte"><div id="window" class="window"><i></i><i></i><i></i><i></i><span id="frameLabel" class="frame-label"></span></div></div>
+   <div id="handles" class="handles"></div>
    <div id="lookFlash" class="look-flash" aria-hidden="true"></div>
    <div id="shutterFlash" class="shutter-flash"></div>
   </div>
@@ -31,10 +32,23 @@
   <div class="context">
    <div id="reel" class="reel" role="listbox" aria-label="電影色彩"></div>
    <div id="dial" class="dial" hidden>
-    <div class="dial-head"><span id="dialLabel"></span><output id="dialValue"></output><button id="dialReset" class="dial-reset">重設</button></div>
-    <div id="ruler" class="ruler" role="slider" tabindex="0"><div id="rulerTrack" class="ruler-track"></div><span class="needle"></span></div>
+    <div class="dial-head"><span class="dial-label"></span><output></output><button class="dial-reset">重設</button></div>
+    <div class="ruler" role="slider" tabindex="0"><div class="ruler-track"></div><span class="needle"></span></div>
    </div>
    <div id="aspects" class="aspects" hidden role="radiogroup" aria-label="畫幅"></div>
+  </div>
+  <div id="studio" class="studio" hidden aria-label="遮色片工作室">
+   <div class="studio-head"><b id="studioTitle">遮色片</b><button id="studioDelete" class="link danger-text" hidden>刪除配方</button><button id="studioSave" class="link">儲存配方</button><button id="studioDone" class="pill">完成</button></div>
+   <div id="maskList" class="mask-list" role="listbox" aria-label="遮色片"></div>
+   <div id="maskActions" class="mask-actions">
+    <button data-act="show" aria-pressed="false">顯示範圍</button><button data-act="invert" aria-pressed="false">反轉</button><button data-act="dup">複製</button><button data-act="dupinv">複製並反轉</button><button data-act="toggle" aria-pressed="true">啟用</button><button data-act="delete" class="danger-text">刪除</button>
+   </div>
+   <div id="maskParams" class="params mask-params" role="toolbar" aria-label="遮色片調整"></div>
+   <div id="maskDial" class="dial">
+    <div class="dial-head"><span class="dial-label"></span><output></output><button class="dial-reset">重設</button></div>
+    <div class="ruler" role="slider" tabindex="0"><div class="ruler-track"></div><span class="needle"></span></div>
+   </div>
+   <p id="studioHint" class="studio-hint">新增一個遮色片開始：漸層、圓形、明暗或顏色。</p>
   </div>
   <div class="shutter-row">
    <button id="rollButton" class="roll-button" aria-label="打開底片盒"><img id="rollThumb" alt=""><span id="rollCount" class="roll-count" hidden>0</span></button>

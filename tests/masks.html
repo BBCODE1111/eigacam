@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>masks</title><style>body{margin:0;background:#111;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}img{width:100%}</style><script type="module">
+import {Renderer} from '../dist/src/engine/renderer.js';import {bakeLook} from '../dist/src/color.js';import {findLook} from '../dist/src/looks.js';import {createMask,duplicateMask} from '../dist/src/masks.js';
+const c=document.createElement('canvas'),r=new Renderer(c);const im=new Image();im.src='../dist/assets/portrait.jpg';await im.decode();
+r.setSource(im,im.naturalWidth,im.naturalHeight);r.resize(400,Math.round(400*im.naturalHeight/im.naturalWidth));r.setLUT(bakeLook(findLook('loveletter')));
+const rad=createMask('radial',{cx:.5,cy:.35,rx:.25,ry:.17,adj:{ev:.8}}),inv=duplicateMask(rad,{invert:true});inv.adj.ev=-1;
+const lin=createMask('linear',{x0:.5,y0:0,x1:.5,y1:.5,adj:{temp:-80}}),luma=createMask('luma',{lo:60,hi:100,adj:{hue:300,amount:80}});
+const cases=[[[rad],rad.id],[[rad],0],[[rad,inv],inv.id],[[rad,inv],0],[[lin],lin.id],[[lin],0],[[luma],luma.id],[[luma],0]];
+for(const [masks,view] of cases){r.render({strength:1,masks,maskView:view});const i=new Image();i.src=c.toDataURL();document.body.append(i);}
+document.title='DONE';
+</script>

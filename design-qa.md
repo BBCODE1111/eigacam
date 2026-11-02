@@ -23,3 +23,10 @@ Root causes found in v2:
 ## Limitations
 
 Not tested on a physical iPhone or Android camera. The fake camera validates flow and geometry only. It does not validate device resolution negotiation, frame rate, Safari's ImageBitmap/FLIP_Y behaviour, or the HQ native-camera round trip. Developing a 12MP photo on a phone will take noticeably longer than on desktop.
+
+## Masks and recipes — 2026-11-02
+
+- Mask engine: linear, radial, luminance-range and colour-range selections with exposure, temperature, tint, saturation, contrast and colour tint, evaluated per pixel in the develop shader (live preview and full-resolution develop share it).
+- Pixel probe: radial +2 EV lifts the centre from 150 to 237 (8-bit) and leaves corners unchanged; saturation −100 neutralises the centre; duplicated-and-inverted masks select the complement.
+- Studio flow exercised in Chromium with and without a camera: add radial, drag handle, EV ruler, duplicate-and-invert, show range, save as recipe R1, shoot and develop with it, viewer shows R1. No page errors.
+- Love Letter keeps skin chroma at 91–100% of the input and lips at about 85%, while greens drop to about a third.

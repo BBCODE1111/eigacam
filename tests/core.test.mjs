@@ -73,6 +73,8 @@ test('only enabled, non-neutral masks are packed for the shader', () => {
  const packed = packMasks([a, b, c, d]);
  assert.equal(packed.count, 2); assert.equal(packed.a[0], 0); assert.equal(packed.a[4], 1); assert.equal(packed.a[5], 1);
  assert.ok(Math.abs(packed.c[1] - .3) < 1e-6); assert.ok(Math.abs(packed.c[7] + .5) < 1e-6);
+ const viewed = packMasks([a, b, c, d], b.id); assert.equal(viewed.count, 3); assert.equal(viewed.view, 2);
+ const off = packMasks([c], c.id); assert.equal(off.count, 1); assert.equal(off.c[0], 0, 'disabled mask is visible but has no effect');
 });
 test('Love Letter keeps skin warm while greens stay muted', async () => {
  const {toLinear, linearToOklab} = await import('../dist/src/color.js');
