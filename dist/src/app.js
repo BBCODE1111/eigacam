@@ -1,228 +1,380 @@
 import {Renderer} from './engine/renderer.js';
-import {decodePhoto,download,jsonBlob,readJSON} from './files.js';
-import {clone,History,validateRecipe,outputDimensions} from './model.js';
-import {PRESETS,createState,findLayer,safeState} from './presets.js';
-import {CameraSession,previewDimensions} from './camera.js';
-import {canSharePhoto,sharePhoto} from './photo-delivery.js';
-import {sampleCurve} from './curves.js';
+import {CameraSession, fitInside} from './camera.js';
+import {LOOKS, findLook} from './looks.js';
+import {bakeLook, parseCube, cropFor, outputSize} from './color.js';
+import {develop, renderSettings} from './develop.js';
+import {addShot, updateShot, listShots, getFile, deleteShots, persist} from './roll.js';
+import {canSharePhoto, sharePhoto} from './photo-delivery.js';
+import {canvasBlob, download} from './files.js';
 
-const $=id=>document.getElementById(id);
-let state=createState(),history=new History(state),source,sourceFile,engine,loading=false,exporting=false,split=false,held=false,grainHeld=false,frame=0,channel='m',toastTimer,loadSequence=0;
-let live=false,cameraPending=false,cameraFrame=0,lastCameraFrame=0,fillView=false,activePanel='',lastTool=null,shooting=false,cameraAttempt=0;
-let preparedPhoto=null,preparedURL='',sharing=false;
-const video=$('cameraVideo'),cameraSession=new CameraSession(navigator.mediaDevices,video);
-function compactControls(parent,key){
- const controls=[...parent.querySelectorAll('.control')];if(!controls.length)return;
- const previous=parent.dataset.selected||key||controls[0].querySelector('input').id;
- const select=document.createElement('select');select.className='parameter-picker';select.setAttribute('aria-label','選擇'+(parent.id==='layerControls'?'光影':'調整')+'項目');
- controls.forEach(c=>{const i=c.querySelector('input'),o=document.createElement('option');o.value=i.id;o.textContent=c.querySelector('label').textContent;select.append(o);});
- parent.prepend(select);select.value=controls.some(c=>c.querySelector('input').id===previous)?previous:select.options[0].value;
- const show=()=>{parent.dataset.selected=select.value;controls.forEach(c=>c.hidden=c.querySelector('input').id!==select.value);};select.onchange=show;show();
-}
-const panelNames={mix:'MIX',grain:'底片顆粒',layers:'光影分層',more:'更多',adjust:'基本調整',curves:'曲線',looks:'電影色彩'};
-function openPanel(name,trigger){
- activePanel=activePanel===name?'':name;if(trigger)lastTool=trigger;
- $('tray').hidden=!activePanel;$('cameraApp').dataset.panel=activePanel;
- document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!=='panel-'+activePanel);
- document.querySelectorAll('[data-panel]').forEach(b=>b.setAttribute('aria-expanded',b.dataset.panel===activePanel));
- if(activePanel)$('trayTitle').textContent=panelNames[activePanel];
-}
-document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>openPanel(b.dataset.panel,b));
-function closePanel(){activePanel='';$('tray').hidden=true;$('cameraApp').dataset.panel='';document.querySelectorAll('[data-panel]').forEach(b=>b.setAttribute('aria-expanded','false'));}
-$('closeTray').onclick=()=>{closePanel();lastTool?.focus();};document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePanel();lastTool?.focus();}});
-function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('visible'),4200);}
-function guard(fn){return async(...args)=>{try{await fn(...args);}catch(e){console.error(e);toast(e.message||'操作失敗，請再試一次。');}};}
-function fill(input){input.style.setProperty('--fill',`${(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))*100}%`);}
-function layer(type){return findLayer(state,type);}
-function commit(){history.push(state);syncHistory();}
-function syncHistory(){$('undo').disabled=history.index===0;$('redo').disabled=history.index===history.items.length-1;}
-function draw(){if(!engine?.source)return;const view=grainHeld?{...state,layers:state.layers.filter(l=>l.type!=='grain')}:state;engine.render(view,{original:held,split:-1});$('splitMarker').hidden=!split||held;$('splitMarker').style.left='50%';if(activePanel==='grain')drawGrainDetail();}
-function render(){cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{try{draw();}catch(e){toast(e.message);}});}
-function control(parent,{label:name,min,max,step=1,value,set,format=v=>String(Math.round(v*100)/100),id}){
- const box=document.createElement('div');box.className='control';
- const head=document.createElement('div');head.className='control-head';const label=document.createElement('label');label.textContent=name;
- const input=document.createElement('input');input.type='range';input.min=min;input.max=max;input.step=step;input.value=value;input.id=id||'control-'+Math.random().toString(36).slice(2);label.htmlFor=input.id;
- const output=document.createElement('output');output.htmlFor=input.id;output.textContent=format(Number(input.value));head.append(label,output);box.append(head,input);parent.append(box);fill(input);
- input.addEventListener('input',()=>{set(Number(input.value));output.textContent=format(Number(input.value));fill(input);render();});input.addEventListener('change',commit);
- input.addEventListener('dblclick',()=>{input.value=value;input.dispatchEvent(new Event('input'));commit();});return input;
-}
-function basicControls(){
- const p=$('basicControls');p.replaceChildren();
- control(p,{id:'exposure',label:'曝光',min:-2,max:2,step:.05,value:state.exposure,set:v=>state.exposure=v,format:v=>(v>0?'+':'')+v.toFixed(2)+' EV'});
- for(const [key,name,min,max] of [['contrast','對比',-50,50],['temperature','冷暖',-50,50],['highlights','高光明度',-60,60],['shadows','陰影明度',-60,60]])control(p,{id:key,label:name,min,max,value:layer('tone').params[key],set:v=>layer('tone').params[key]=v,format:v=>(v>0?'+':'')+v});
- control(p,{id:'saturation',label:'飽和度',min:-100,max:60,value:layer('color').params.saturation,set:v=>layer('color').params.saturation=v,format:v=>(v>0?'+':'')+v});
- control(p,{id:'softness',label:'整體柔化',min:0,max:100,value:layer('soften').params.amount*100,set:v=>layer('soften').params.amount=v/100,format:v=>Math.round(v)+'%'});
- compactControls(p,'exposure');
-}
-function grainControls(){
- const p=$('grainControls');p.replaceChildren();
- control(p,{id:'grain',label:'顆粒強度',min:0,max:100,value:layer('grain').params.amount/.0035,set:v=>layer('grain').params.amount=v/100*.35,format:v=>Math.round(v)+'%'});
- control(p,{id:'grainSize',label:'顆粒大小',min:.5,max:8,step:.1,value:layer('grain').params.size,set:v=>layer('grain').params.size=v,format:v=>v.toFixed(1)});
- control(p,{id:'grainRoughness',label:'粗糙度',min:0,max:100,value:layer('grain').params.roughness*100,set:v=>layer('grain').params.roughness=v/100,format:v=>Math.round(v)+'%'});
- compactControls(p,'grain');
-}
-function drawGrainDetail(){
- if(!engine?.source)return;const c=$('grainDetail'),x=c.getContext('2d'),w=Math.min(220,engine.width),h=Math.min(132,engine.height);
- x.imageSmoothingEnabled=false;x.drawImage(engine.canvas,(engine.width-w)/2,(engine.height-h)/2,w,h,0,0,c.width,c.height);
-}
-const grainHold=$('grainHold');
-function releaseGrain(){if(grainHeld){grainHeld=false;grainHold.setAttribute('aria-pressed','false');render();}}
-grainHold.onpointerdown=e=>{grainHold.setPointerCapture(e.pointerId);grainHeld=true;grainHold.setAttribute('aria-pressed','true');render();};
-grainHold.onpointerup=releaseGrain;grainHold.onpointercancel=releaseGrain;grainHold.onlostpointercapture=releaseGrain;
-grainHold.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();grainHeld=true;grainHold.setAttribute('aria-pressed','true');render();}};
-grainHold.onkeyup=releaseGrain;grainHold.onblur=releaseGrain;window.addEventListener('blur',releaseGrain);
-document.querySelectorAll('[data-grain-stock]').forEach(b=>b.onclick=()=>{const stocks={fine:[.07,1.8,.25],classic:[.14,3.5,.55],rough:[.245,5.4,.8]},v=stocks[b.dataset.grainStock],p=layer('grain').params;[p.amount,p.size,p.roughness]=v;layer('grain').enabled=true;commit();grainControls();render();});
-function layerControls(){
- const p=$('layerControls');p.replaceChildren();$('layerSwitches').replaceChildren();
- for(const type of ['bloom','shadow']){
-  const l=layer(type),isLight=type==='bloom',prefix=isLight?'高光':'陰影';
-  const toggle=document.createElement('button');toggle.setAttribute('role','switch');toggle.setAttribute('aria-label',prefix+'層開關');toggle.setAttribute('aria-checked',l.enabled);toggle.textContent=prefix+(l.enabled?' · 開':' · 關');$('layerSwitches').append(toggle);
-  const inputs=[];const add=spec=>inputs.push(control(p,spec));
-  toggle.onclick=()=>{l.enabled=!l.enabled;toggle.setAttribute('aria-checked',l.enabled);toggle.textContent=prefix+(l.enabled?' · 開':' · 關');inputs.forEach(i=>i.disabled=!l.enabled);commit();render();};
-  add({id:type+'Mix',label:prefix+' · MIX',min:0,max:100,value:l.strength*100,set:v=>l.strength=v/100,format:v=>v+'%'});
-  add({id:type+'Hue',label:prefix+' · 染色色相',min:0,max:360,value:l.params.hue,set:v=>l.params.hue=v,format:v=>v+'°'});
-  add({id:type+'Sat',label:prefix+' · 染色強度',min:0,max:50,value:l.params.saturation*100,set:v=>l.params.saturation=v/100,format:v=>v+'%'});
-  add({id:type+'Threshold',label:prefix+' · 選取範圍',min:isLight?10:2,max:isLight?95:80,value:l.params.threshold*100,set:v=>l.params.threshold=v/100,format:v=>v+'%'});
-  if(isLight){add({id:'bloomAmount',label:'高光 · 光暈強度',min:0,max:150,value:l.params.amount*100,set:v=>l.params.amount=v/100,format:v=>Math.round(v)+'%'});add({id:'bloomRadius',label:'高光 · 光暈擴散',min:.5,max:8,step:.1,value:l.params.radius*100,set:v=>l.params.radius=v/100,format:v=>v.toFixed(1)});}
-  else add({id:'shadowBrightness',label:'陰影 · 亮度',min:-40,max:40,value:l.params.brightness*100,set:v=>l.params.brightness=v/100,format:v=>(v>0?'+':'')+v});
-  inputs.forEach(i=>i.disabled=!l.enabled);
+const $ = id => document.getElementById(id);
+const video = $('cameraVideo'), camera = new CameraSession(navigator.mediaDevices, video);
+
+// ---------- preferences ----------
+const PARAMS = [
+ {key: 'ev', code: 'EV', label: '曝光', min: -2, max: 2, step: .1, def: 0, fmt: v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1)},
+ {key: 'ratio', code: 'FRAME', label: '畫幅', type: 'aspect', def: 0},
+ {key: 'strength', code: 'MIX', label: '濃度', min: 0, max: 100, step: 1, def: 100, fmt: v => v + '%'},
+ {key: 'warmth', code: 'WB', label: '色溫', min: -50, max: 50, step: 1, def: 0, fmt: v => v > 0 ? '暖' + v : v < 0 ? '冷' + -v : '±0'},
+ {key: 'grain', code: 'GRAIN', label: '顆粒', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
+ {key: 'glow', code: 'GLOW', label: '光暈', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
+ {key: 'sharpen', code: 'SHARP', label: '銳利', min: 0, max: 100, step: 5, def: 35, fmt: v => String(v)}
+];
+const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];
+const defaults = Object.fromEntries([['look', 'print'], ['hq', false], ...PARAMS.map(p => [p.key, p.def])]);
+const store = {get(k) {try {return JSON.parse(localStorage.getItem(k));} catch {return null;}}, set(k, v) {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}};
+const prefs = {...defaults, ...(store.get('eigacam.prefs') ?? {})};
+const savePrefs = () => store.set('eigacam.prefs', prefs);
+const dials = () => Object.fromEntries(PARAMS.filter(p => p.type !== 'aspect').map(p => [p.key, prefs[p.key]]));
+
+// ---------- looks & LUTs ----------
+let custom = null; // {look, lut}
+try {const saved = localStorage.getItem('eigacam.cube'); if (saved) {const lut = parseCube(saved); custom = {lut, look: customLook(lut)};}} catch {}
+function customLook(lut) {return {id: 'custom', code: 'LUT', name: '自訂 LUT', en: (lut.title || 'CUSTOM CUBE').toUpperCase().slice(0, 24), swatch: ['#222', '#777', '#ddd'], desc: '你匯入的 .cube LUT。', grain: {amount: .04, size: 1.5}, glow: {halation: .1, bloom: .05, hue: 20}};}
+const allLooks = () => custom ? [...LOOKS, custom.look] : LOOKS;
+const lookById = id => id === 'custom' && custom ? custom.look : findLook(id);
+const luts = new Map();
+function lutFor(id) {if (id === 'custom' && custom) return custom.lut; if (!luts.has(id)) luts.set(id, bakeLook(findLook(id))); return luts.get(id);}
+if (prefs.look === 'custom' && !custom) prefs.look = 'print';
+
+// ---------- UI helpers ----------
+let toastTimer;
+function toast(text) {$('toast').textContent = text; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 3600);}
+const guard = fn => async (...a) => {try {await fn(...a);} catch (e) {console.error(e); toast(e.message || '發生錯誤，請再試一次。');}};
+
+// ---------- preview renderer ----------
+let preview = null, live = false, pending = false, frameHandle = 0, idleSource = null;
+function ensurePreview() {if (!preview) preview = new Renderer($('preview')); return preview;}
+$('preview').addEventListener('engine-error', e => toast(e.detail));
+function sourceSize() {return live ? {width: video.videoWidth, height: video.videoHeight} : idleSource ?? {width: 3, height: 4};}
+
+function layout() {
+ const box = $('viewfinder').getBoundingClientRect(), src = sourceSize();
+ const s = Math.min(box.width / src.width, box.height / src.height);
+ const w = Math.floor(src.width * s), h = Math.floor(src.height * s);
+ $('frame').style.width = w + 'px'; $('frame').style.height = h + 'px';
+ const crop = cropFor(src.width, src.height, prefs.ratio), win = $('window').style;
+ win.left = crop.x * 100 + '%'; win.top = crop.y * 100 + '%'; win.width = crop.w * 100 + '%'; win.height = crop.h * 100 + '%';
+ const aspect = ASPECTS.find(a => a.value === prefs.ratio) ?? ASPECTS[0];
+ const out = outputSize(src.width, src.height, crop, 8192, 40_000_000);
+ $('frameLabel').textContent = live ? `${aspect.code} ${prefs.ratio ? aspect.label + ':1' : ''} · ${out.width}×${out.height}`.replace('16:9:1', '16:9') : '';
+ $('matte').classList.toggle('full', !prefs.ratio);
+ if (preview && live) {
+  const dpr = Math.min(devicePixelRatio || 1, 3), size = fitInside(Math.round(w * dpr), Math.round(h * dpr), 1600);
+  const fit = fitInside(src.width, src.height, Math.max(size.width, size.height));
+  try {preview.resize(fit.width, fit.height);} catch (e) {toast(e.message);}
  }
- compactControls(p,'bloomAmount');
 }
-function curveValues(){return Array.from({length:5},(_,i)=>layer('curves').params[channel+i]);}
-function updateCurve(){
- const pts=curveValues(),color={m:'#dec7a1',r:'#d4948b',g:'#9cbe9c',b:'#8eacd1'}[channel],values=[];
- for(let x=0;x<=100;x++)values.push(`${x?'L':'M'}${20+x*2.4},${260-sampleCurve(pts,x/100)*240}`);
- $('curvePath').setAttribute('d',values.join(' '));$('curvePath').setAttribute('stroke',color);$('curveArea').setAttribute('d',values.join(' ')+' L260,260 L20,260 Z');
- $('curveKnots').innerHTML=pts.map((v,i)=>`<g data-knot="${i}"><circle class="curve-hit" cx="${20+i*60}" cy="${260-v*2.4}" r="16"/><circle class="curve-knot" cx="${20+i*60}" cy="${260-v*2.4}" r="5" style="stroke:${color}"/></g>`).join('');
- document.querySelectorAll('[data-channel]').forEach(b=>{b.classList.toggle('active',b.dataset.channel===channel);b.setAttribute('aria-pressed',b.dataset.channel===channel);});
+new ResizeObserver(layout).observe($('viewfinder'));
+
+function drawPreview() {
+ if (!preview || !live || video.readyState < 2) return;
+ const look = lookById(prefs.look);
+ preview.setSource(video); preview.setLUT(lutFor(look.id));
+ preview.render(renderSettings(look, dials(), {mirror: camera.facing === 'user', grainSeed: [Math.random() * 999, Math.random() * 999]}));
 }
-function setCurvePoint(i,v){const p=layer('curves').params,min=i?p[channel+(i-1)]:0,max=i<4?p[channel+(i+1)]:100;p[channel+i]=Math.round(Math.max(min,Math.min(max,v)));updateCurve();}
-function curveControls(){updateCurve();const box=$('curveSliders');box.replaceChildren();['黑點','暗部','中間調','亮部','白點'].forEach((name,i)=>control(box,{id:'knot-'+i,label:name+' · 輸入 '+(i*25),min:0,max:100,value:curveValues()[i],set:v=>{setCurvePoint(i,v);const input=$('knot-'+i);input.value=curveValues()[i];},format:v=>'輸出 '+v}));compactControls(box,'knot-2');}
-let dragging=-1;
-$('curveSvg').onpointerdown=e=>{const node=e.target.closest('[data-knot]');if(!node)return;dragging=Number(node.dataset.knot);$('curveSvg').setPointerCapture(e.pointerId);e.preventDefault();};
-$('curveSvg').onpointermove=e=>{if(dragging<0)return;const r=$('curveSvg').getBoundingClientRect(),y=(e.clientY-r.top)/r.height*280;setCurvePoint(dragging,(260-y)/2.4);const input=$('knot-'+dragging);input.value=curveValues()[dragging];input.previousElementSibling.querySelector('output').textContent='輸出 '+input.value;fill(input);render();};
-function releaseCurve(){if(dragging>=0){dragging=-1;commit();}}
-$('curveSvg').onpointerup=releaseCurve;$('curveSvg').onpointercancel=releaseCurve;$('curveSvg').onlostpointercapture=releaseCurve;
-document.querySelectorAll('[data-channel]').forEach(b=>b.onclick=()=>{channel=b.dataset.channel;curveControls();});
-$('resetCurve').onclick=()=>{[0,25,50,75,100].forEach((v,i)=>layer('curves').params[channel+i]=v);commit();curveControls();render();};
-function refresh(){
- const p=PRESETS.find(p=>p.id===state.id);$('lookDot').style.background=p?.color||'#dec79b';$('lookName').textContent=state.name;$('lookDescription').textContent=state.description;
- $('mix').value=state.mix*100;$('mixValue').innerHTML=Math.round(state.mix*100)+'<span>%</span>';fill($('mix'));
- document.querySelectorAll('.preset').forEach(b=>{b.classList.toggle('active',b.dataset.look===state.id);b.setAttribute('aria-pressed',b.dataset.look===state.id);});
- basicControls();grainControls();layerControls();curveControls();syncHistory();render();
+function loop() {
+ if (!live) return;
+ try {drawPreview();} catch (e) {stopCamera(); toast(e.message); return;}
+ frameHandle = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(loop) : requestAnimationFrame(loop);
 }
-function selectPreset(id){const ev=state.exposure;state=createState(id);state.exposure=ev;commit();refresh();}
-for(const [i,p] of PRESETS.entries()){
- const b=document.createElement('button');b.className='preset';b.dataset.look=p.id;b.title=p.desc;b.setAttribute('aria-label',`${p.name} ${p.tags}`);b.setAttribute('aria-pressed',p.id===state.id);
- b.innerHTML=`<span class="number">${String(i+1).padStart(2,'0')} / ${p.en}</span><strong>${p.name}</strong><small>${p.tags}</small>`;b.onclick=()=>selectPreset(p.id);$('presets').append(b);
+
+// ---------- camera lifecycle ----------
+function setState(name) {$('hudState').textContent = name; $('app').dataset.state = name.toLowerCase();}
+function updateControls() {
+ $('flip').disabled = !live; $('vfIdle').hidden = live || pending; $('frame').hidden = !live;
+ $('hudRes').textContent = live ? `${video.videoWidth}×${video.videoHeight}` : '— × —';
+ $('hqToggle').setAttribute('aria-pressed', prefs.hq); $('app').classList.toggle('hq', prefs.hq);
+ $('shutter').setAttribute('aria-label', prefs.hq ? '用 HQ 系統相機拍攝' : live ? '拍攝' : '開啟相機');
+ setState(pending ? 'WAIT' : live ? 'LIVE' : 'STBY');
 }
-function layout(){
- if(!engine?.source)return;const available=$('stage').getBoundingClientRect(),scale=(fillView?Math.max:Math.min)(available.width/engine.width,available.height/engine.height);
- $('imageFrame').style.width=Math.max(1,engine.width*scale)+'px';$('imageFrame').style.height=Math.max(1,engine.height*scale)+'px';
+async function startCamera(facing = camera.facing || 'environment') {
+ if (pending) return; pending = true; updateControls();
+ try {
+  const stream = await camera.start(facing, matchMedia('(orientation: portrait)').matches);
+  if (!stream) return;
+  ensurePreview(); live = true;
+  stream.getVideoTracks().forEach(t => t.onended = () => {if (live) {stopCamera(); toast('相機已停止');}});
+  layout(); setupZoom(); loop();
+  store.set('eigacam.cameraGranted', true);
+ } catch (e) {stopCamera(); $('idleText').textContent = e.message; toast(e.message);}
+ finally {pending = false; updateControls();}
 }
-new ResizeObserver(layout).observe($('stage'));
-$('fitView').onclick=()=>{fillView=!fillView;$('cameraApp').classList.toggle('fit-fill',fillView);$('fitView').setAttribute('aria-pressed',fillView);$('fitView').textContent=fillView?'滿版檢視':'完整構圖';layout();if(fillView)toast('滿版只放大預覽，匯出仍保留完整照片');};
-function updateAvailability(){
- $('exportTop').disabled=!source||live||cameraPending||loading||exporting;$('download').disabled=!preparedPhoto||exporting||sharing;
- $('camera').disabled=loading||exporting||cameraPending||shooting;$('camera').setAttribute('aria-label',live?'拍攝照片':'開啟相機');$('camera').classList.toggle('live',live);
- $('flipCamera').disabled=!live||cameraPending||shooting;$('leaveCamera').hidden=!live&&!cameraPending;$('fitView').disabled=!engine?.source;
- $('modeLabel').textContent=live?`LIVE · ${video.videoWidth} × ${video.videoHeight}`:source?'PHOTO / 照片調色':'PHOTO / FILM COLOR';
+function stopCamera() {
+ live = false; camera.stop();
+ if (frameHandle) {video.cancelVideoFrameCallback?.(frameHandle); cancelAnimationFrame(frameHandle); frameHandle = 0;}
+ $('zoom').hidden = true; updateControls();
 }
-function restoreStill(){
- if(source&&engine){const d=previewDimensions(source.width,source.height,1280);engine.setSource(source,d.width,d.height);$('imageFrame').hidden=false;$('empty').hidden=true;layout();draw();}
- else{$('imageFrame').hidden=true;$('empty').hidden=false;}
+function setupZoom() {
+ const range = camera.zoomRange(), box = $('zoom'); box.replaceChildren();
+ if (!range) {box.hidden = true; return;}
+ const stops = [...new Set([range.min < 1 ? range.min : null, 1, 2, 3, 5].filter(v => v !== null && v >= range.min && v <= range.max))];
+ if (stops.length < 2) {box.hidden = true; return;}
+ for (const v of stops) {
+  const b = document.createElement('button'); b.textContent = (Math.round(v * 10) / 10) + '×'; b.dataset.zoom = v;
+  b.classList.toggle('active', Math.abs(v - range.value) < .05);
+  b.onclick = guard(async () => {await camera.setZoom(v); box.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));});
+  box.append(b);
+ }
+ box.hidden = false;
 }
-function stopCamera(restore=true){cameraAttempt++;live=false;cameraPending=false;cameraSession.stop();cancelAnimationFrame(cameraFrame);if(restore)restoreStill();updateAvailability();}
-async function startCamera(facing='environment'){
- if(loading||exporting||cameraPending)return;const attempt=++cameraAttempt;cameraPending=true;$('cameraStatus').textContent='請允許相機權限，準備即時取景…';updateAvailability();
- try{
-  live=false;cancelAnimationFrame(cameraFrame);const stream=await cameraSession.start(facing,matchMedia('(orientation: portrait)').matches);if(!stream||attempt!==cameraAttempt)return;
-  if(!engine)engine=new Renderer($('preview'));
-  const d=previewDimensions(video.videoWidth,video.videoHeight,960);engine.setSource(video,d.width,d.height);
-  live=true;$('imageFrame').hidden=false;$('empty').hidden=true;$('failure').hidden=true;closePanel();layout();
-  stream.getVideoTracks().forEach(t=>t.onended=()=>{if(live){stopCamera();toast('相機已停止，可重新開啟或匯入照片');}});
-  const loop=t=>{if(!live)return;try{if(video.readyState>=2&&t-lastCameraFrame>80){lastCameraFrame=t;const size=previewDimensions(video.videoWidth,video.videoHeight,960);if(engine.width!==size.width||engine.height!==size.height){engine.setSource(video,size.width,size.height);layout();updateAvailability();}engine.updateSource(video,cameraSession.facing==='user');draw();}cameraFrame=requestAnimationFrame(loop);}catch(e){stopCamera();toast(e.message);}};cameraFrame=requestAnimationFrame(loop);
- }catch(e){if(attempt!==cameraAttempt)return;stopCamera();$('cameraStatus').textContent=e.message;$('nativeCamera').hidden=false;toast(e.message);}
- finally{if(attempt===cameraAttempt){cameraPending=false;updateAvailability();}}
+
+// ---------- capture & develop ----------
+const queue = []; let developing = false, memoryRoll = null;
+function updateBusy() {const n = queue.length + (developing ? 1 : 0); $('busy').hidden = !n; $('busy').lastChild.textContent = n > 1 ? `沖印中 · ${n}` : '沖印中'; $('rollButton').classList.toggle('developing', !!n);}
+function enqueue(job) {queue.push(job); updateBusy(); pump();}
+async function pump() {
+ if (developing) return; developing = true; updateBusy();
+ while (queue.length) {
+  const job = queue.shift(); updateBusy();
+  try {
+   const look = lookById(job.look);
+   const out = await develop(job.blob, {lut: lutFor(look.id), ratio: job.ratio, settings: renderSettings(look, job.dials, {mirror: job.mirror})});
+   const shot = {id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, created: Date.now(), look: look.id, lookName: look.name, dials: job.dials, ratio: job.ratio, mirror: job.mirror, width: out.width, height: out.height, thumb: out.thumb};
+   await saveShot(shot, job.blob, out.jpeg);
+   setRollThumb(out.thumb, true);
+  } catch (e) {console.error(e); toast('沖印失敗：' + (e.message || '記憶體不足'));}
+ }
+ developing = false; updateBusy();
 }
-async function capture(){
- if(!live){await startCamera();return;}if(shooting||loading||exporting)return;shooting=true;updateAvailability();
- const attempt=cameraAttempt,mirror=cameraSession.facing==='user';
- try{
-  let blob=await cameraSession.takePhoto();if(attempt!==cameraAttempt||!live)return;
-  if(!blob||mirror){
-   const decoded=blob?await decodePhoto(blob):null;if(attempt!==cameraAttempt||!live){if(decoded)decoded.width=decoded.height=1;return;}
-   const c=document.createElement('canvas');c.width=decoded?.width||video.videoWidth;c.height=decoded?.height||video.videoHeight;const x=c.getContext('2d');if(mirror){x.translate(c.width,0);x.scale(-1,1);}x.drawImage(decoded||video,0,0,c.width,c.height);
-   // Preserve the captured frame losslessly; JPEG is encoded once, at final save.
-   blob=await new Promise((resolve,reject)=>c.toBlob(b=>b?resolve(b):reject(Error('拍攝失敗，請再試一次')),'image/png'));c.width=c.height=1;if(decoded)decoded.width=decoded.height=1;
-  }
-  if(attempt!==cameraAttempt||!live)return;
-  const extension={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[blob.type];stopCamera(false);await openPhoto(new File([blob],`PHOTO-${Date.now()}.${extension}`,{type:blob.type}),'剛拍下的這一刻');toast('已拍攝，繼續調色或儲存照片');
- }catch(e){toast(e.message);}finally{shooting=false;updateAvailability();}
+async function saveShot(shot, original, developed) {
+ if (!memoryRoll) {try {await addShot(shot, original, developed); return;} catch (e) {memoryRoll = new Map(); toast(e.message);}}
+ memoryRoll.set(shot.id, {shot, original, developed});
 }
-async function openPhoto(file,name=file.name){
- if(loading||exporting)return;stopCamera(false);loading=true;const seq=++loadSequence;$('loading').hidden=false;$('failure').hidden=true;updateAvailability();
- try{
-  const next=await decodePhoto(file);if(seq!==loadSequence){next.width=next.height=1;return;}
-  if(!engine)engine=new Renderer($('preview'));const d=previewDimensions(next.width,next.height,1280);engine.setSource(next,d.width,d.height);
-  if(source)source.width=source.height=1;source=next;sourceFile=file;$('imageName').textContent=name;$('imageDimensions').textContent=`${next.originalWidth} × ${next.originalHeight}`;const full=outputDimensions(next.originalWidth,next.originalHeight,'original');$('exportSize').value=full.width<=engine.maxSize&&full.height<=engine.maxSize&&full.width*full.height<=engine.pixelLimit?'original':'3840';
-  held=false;split=false;$('imageFrame').hidden=false;$('empty').hidden=true;closePanel();layout();draw();
-  const thumb=document.createElement('canvas');thumb.width=80;thumb.height=80;const x=thumb.getContext('2d'),size=Math.min(next.width,next.height);x.drawImage(next,(next.width-size)/2,(next.height-size)/2,size,size,0,0,80,80);$('albumThumb').src=thumb.toDataURL('image/jpeg',.8);$('albumThumb').classList.add('has-photo');
- }catch(e){restoreStill();throw e;}
- finally{loading=false;$('loading').hidden=true;updateAvailability();}
+async function shots() {return memoryRoll ? [...memoryRoll.values()].map(v => v.shot).sort((a, b) => b.created - a.created) : listShots().catch(() => []);}
+async function fileOf(id, kind) {return memoryRoll ? memoryRoll.get(id)?.[kind] : getFile(id, kind);}
+
+function grabFrame() {
+ const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
+ c.getContext('2d').drawImage(video, 0, 0); return canvasBlob(c, 'image/jpeg', .97).finally(() => {c.width = c.height = 1;});
 }
-$('upload').onclick=()=>$('photoInput').click();$('emptyUpload').onclick=$('upload').onclick;$('camera').onclick=capture;$('startCamera').onclick=()=>startCamera();$('leaveCamera').onclick=()=>stopCamera();$('flipCamera').onclick=()=>startCamera(cameraSession.facing==='user'?'environment':'user');
-const systemCapture=()=>{if(shooting||loading||exporting)return;stopCamera();$('captureInput').click();};$('nativeCamera').onclick=systemCapture;$('systemCamera').onclick=systemCapture;
-for(const id of ['photoInput','captureInput'])$(id).onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';if(file){await openPhoto(file);toast('已套用「'+state.name+'」');}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&(live||cameraPending))stopCamera();});window.addEventListener('pagehide',()=>stopCamera(false));
-let dragDepth=0;document.addEventListener('dragover',e=>e.preventDefault());document.addEventListener('drop',e=>e.preventDefault());
-$('stage').ondragenter=e=>{e.preventDefault();dragDepth++;$('dropzone').hidden=false;};$('stage').ondragleave=()=>{if(--dragDepth<=0){dragDepth=0;$('dropzone').hidden=true;}};
-$('stage').ondrop=guard(async e=>{e.preventDefault();dragDepth=0;$('dropzone').hidden=true;const file=e.dataTransfer.files[0];if(file)await openPhoto(file);});
-$('mix').oninput=e=>{state.mix=Number(e.target.value)/100;$('mixValue').innerHTML=e.target.value+'<span>%</span>';fill(e.target);render();};$('mix').onchange=commit;
-$('reset').onclick=()=>{state=createState(PRESETS.some(p=>p.id===state.id)?state.id:'nocturne');commit();refresh();toast('已還原色彩與曝光');};
-$('undo').onclick=()=>{state=history.undo();refresh();};$('redo').onclick=()=>{state=history.redo();refresh();};
-document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();e.shiftKey?$('redo').click():$('undo').click();}});
-const release=()=>{held=false;render();};$('hold').onpointerdown=e=>{e.preventDefault();$('hold').setPointerCapture(e.pointerId);held=true;render();};$('hold').onpointerup=release;$('hold').onpointercancel=release;$('hold').onlostpointercapture=release;$('hold').onblur=release;$('hold').onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();held=true;render();}};$('hold').onkeyup=release;
-$('saveRecipe').onclick=()=>{download(jsonBlob({format:'eigacam-recipe',version:1,state}),`EIGACAM-${state.name}.json`);toast('配方已下載，不包含照片');};
-$('loadRecipe').onclick=()=>$('recipeInput').click();$('recipeInput').onchange=guard(async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;const next=validateRecipe(safeState(await readJSON(file)));for(const type of ['tone','color','shadow','bloom','curves','soften','grain','vignette'])if(next.layers.filter(l=>l.type===type).length!==1)throw Error('配方缺少必要圖層，請使用 EIGACAM 匯出的配方。');for(const c of ['m','r','g','b'])for(let i=1;i<5;i++)if(findLayer(next,'curves').params[c+i]<findLayer(next,'curves').params[c+(i-1)])throw Error('曲線控制點必須維持明暗順序。');state=next;commit();refresh();toast('配方已套用');});
-function dims(){return outputDimensions(source.originalWidth,source.originalHeight,$('exportSize').value);}
-function outputInfo(){if(!source)return true;const d=dims(),limited=d.width>engine.maxSize||d.height>engine.maxSize||d.width*d.height>engine.pixelLimit;$('outputInfo').textContent=`${d.width.toLocaleString()} × ${d.height.toLocaleString()} px · 不放大原圖${limited?' · 超出此裝置範圍，請選較小尺寸':''}`;return limited;}
-function deliveryControls(){
- const busy=exporting||sharing;$('savePhoto').disabled=busy;$('download').disabled=!preparedPhoto||busy;
- $('exportSize').disabled=busy;$('quality').disabled=busy;
- $('savePhoto').textContent=exporting?'正在準備照片…':sharing?'分享選單已開啟…':!preparedPhoto?'重新準備照片':canSharePhoto(preparedPhoto)?'儲存／分享照片':'顯示照片以儲存';
+let shooting = false;
+const shoot = guard(async () => {
+ if (prefs.hq) {nativeCapture(); return;}
+ if (!live) {await startCamera(); return;}
+ if (shooting) return; shooting = true;
+ const job = {look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: camera.facing === 'user'};
+ $('shutterFlash').classList.remove('on'); void $('shutterFlash').offsetWidth; $('shutterFlash').classList.add('on');
+ setState('REC'); navigator.vibrate?.(12);
+ try {
+  // Android Chrome can take a real still photo; elsewhere keep the full-resolution sensor frame.
+  const still = 'ImageCapture' in globalThis ? await camera.takePhoto() : null;
+  job.blob = still ?? await grabFrame();
+  enqueue(job);
+ } finally {shooting = false; setTimeout(() => live && setState('LIVE'), 300);}
+});
+let resumeAfterNative = false;
+function nativeCapture() {resumeAfterNative = live; stopCamera(); $('captureInput').click();}
+function importFiles(files, label) {
+ const list = [...files].filter(f => /^image\//.test(f.type) || f.type === '');
+ for (const blob of list) enqueue({blob, look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: false});
+ if (list.length) toast(`${label} ${list.length} 張，正以「${lookById(prefs.look).name}」沖印`);
 }
-function showSaveFallback(message){$('saveFallback').hidden=false;$('exportStatus').textContent=message;}
-async function preparePhoto(){
- if(!source||exporting||sharing)return;
- preparedPhoto=null;if(preparedURL)URL.revokeObjectURL(preparedURL);preparedURL='';$('savePreview').removeAttribute('src');$('saveFallback').hidden=true;
- $('exportStatus').textContent='';$('exportProgress').hidden=true;
- if(outputInfo()){$('exportStatus').textContent='請選擇較小的照片尺寸，再試一次。';deliveryControls();return;}
- exporting=true;const snapshot=clone(state),file=sourceFile,d=dims(),q=Number($('quality').value);updateAvailability();deliveryControls();$('exportProgress').value=0;$('exportProgress').hidden=false;let exporter,decoded;
- try{const canvas=document.createElement('canvas');exporter=new Renderer(canvas);$('exportStatus').textContent='正在準備原始照片…';decoded=await decodePhoto(file,{target:d,maxEdge:exporter.maxSize,maxPixels:exporter.pixelLimit});exporter.setSource(decoded,d.width,d.height);await exporter.export(snapshot,v=>{$('exportProgress').value=v;$('exportStatus').textContent=`正在處理光影 · ${Math.round(v)}%`;});const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('照片編碼失敗，請降低尺寸。')),'image/jpeg',q));
-  preparedPhoto=new File([blob],`EIGACAM-${snapshot.name}-${file.name.replace(/\.[^.]+$/,'')}.jpg`,{type:'image/jpeg'});preparedURL=URL.createObjectURL(preparedPhoto);$('savePreview').src=preparedURL;
-  $('exportProgress').value=100;$('exportStatus').textContent=`照片已準備好 · ${d.width} × ${d.height} px`;
-  if(!canSharePhoto(preparedPhoto))showSaveFallback('此瀏覽器不支援照片分享，可長按下方照片儲存。');
- }catch(e){$('exportStatus').textContent=e.message||'照片準備失敗，請再試一次。';}
- finally{exporter?.destroy();if(decoded)decoded.width=decoded.height=1;exporting=false;$('exportProgress').hidden=true;updateAvailability();deliveryControls();}
+const resume = () => {const r = resumeAfterNative; resumeAfterNative = false; if (r) startCamera();};
+$('captureInput').addEventListener('change', e => {importFiles(e.target.files, 'HQ 拍攝'); e.target.value = ''; resume();});
+$('captureInput').addEventListener('cancel', resume);
+$('photoInput').addEventListener('change', e => {importFiles(e.target.files, '已匯入'); e.target.value = '';});
+
+// ---------- look reel ----------
+let flashTimer;
+function selectLook(id, announce = true) {
+ prefs.look = id; savePrefs(); const look = lookById(id);
+ $('hudLook').textContent = `${look.code} ${look.en}`;
+ document.querySelectorAll('#reel .look').forEach(b => {const on = b.dataset.look === id; b.classList.toggle('active', on); b.setAttribute('aria-selected', on); if (on) b.scrollIntoView({inline: 'center', block: 'nearest', behavior: 'smooth'});});
+ if (announce && live) {const f = $('lookFlash'); f.innerHTML = `<b>${look.code}</b><strong>${look.name}</strong><span>${look.en}</span>`; f.classList.add('on'); clearTimeout(flashTimer); flashTimer = setTimeout(() => f.classList.remove('on'), 1100);}
+ if (!live) drawPreview();
 }
-$('exportTop').onclick=()=>{if(!source)return;$('exportDialog').showModal();preparePhoto();};$('exportSize').onchange=preparePhoto;$('quality').onchange=preparePhoto;
-$('savePhoto').onclick=async()=>{
- if(exporting||sharing)return;if(!preparedPhoto){preparePhoto();return;}
- if(!canSharePhoto(preparedPhoto)){showSaveFallback('長按照片，選擇儲存影像。可用選項依瀏覽器而定。');return;}
- sharing=true;deliveryControls();
- try{
-  // No encoding or asynchronous work before this call: preserve iOS user activation.
-  const result=await sharePhoto(preparedPhoto);
-  if(result.status==='cancelled')$('exportStatus').textContent='已取消分享，照片仍留在這裡。';
-  else if(result.status==='unsupported')showSaveFallback('此瀏覽器無法分享照片，請長按下方照片儲存。');
-  else $('exportStatus').textContent='已交給系統分享選單。是否存入相簿，請到「照片」確認。';
- }catch{showSaveFallback('無法開啟分享選單，可重試或長按下方照片儲存。');}
- finally{sharing=false;deliveryControls();}
+function lookButton(look, onPick, current) {
+ const b = document.createElement('button'); b.className = 'look'; b.dataset.look = look.id; b.setAttribute('role', 'option'); b.title = look.desc;
+ b.style.setProperty('--sw', `linear-gradient(90deg, ${look.swatch.join(',')})`);
+ b.innerHTML = `<i></i><span class="code">${look.code}</span><strong>${look.name}</strong>`;
+ b.classList.toggle('active', look.id === current); b.onclick = () => onPick(look.id); return b;
+}
+function buildReel() {
+ const reel = $('reel'); reel.replaceChildren(...allLooks().map(l => lookButton(l, selectLook, prefs.look)));
+ const add = document.createElement('button'); add.className = 'look add'; add.innerHTML = '<i></i><span class="code">.CUBE</span><strong>匯入 LUT</strong>'; add.onclick = () => $('cubeInput').click(); reel.append(add);
+ selectLook(prefs.look, false);
+}
+$('cubeInput').addEventListener('change', guard(async e => {
+ const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+ if (file.size > 12 * 1024 * 1024) throw Error('LUT 檔太大（上限 12 MB）。');
+ const text = await file.text(), lut = parseCube(text);
+ custom = {lut, look: customLook(lut)}; custom.look.en = (lut.title || file.name.replace(/\.cube$/i, '')).toUpperCase().slice(0, 24);
+ try {localStorage.setItem('eigacam.cube', text);} catch {toast('LUT 太大，無法記住，重新整理後需再匯入');}
+ buildReel(); selectLook('custom'); toast('已載入 LUT：' + custom.look.en);
+}));
+// Swipe across the viewfinder to change looks, like changing film stock.
+let swipe = null;
+$('viewfinder').addEventListener('pointerdown', e => {if (e.target.closest('button')) return; swipe = {x: e.clientX, y: e.clientY};});
+$('viewfinder').addEventListener('pointerup', e => {
+ if (!swipe) return; const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null;
+ if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+ const list = allLooks(), i = list.findIndex(l => l.id === prefs.look);
+ selectLook(list[(i + (dx < 0 ? 1 : -1) + list.length) % list.length].id);
+});
+
+// ---------- parameter strip, ruler dial, aspect picker ----------
+let activeParam = '';
+function paramText(p) {return p.type === 'aspect' ? (ASPECTS.find(a => a.value === prefs.ratio) ?? ASPECTS[0]).label : p.fmt(prefs[p.key]);}
+function buildParams() {
+ $('params').replaceChildren(...PARAMS.map(p => {
+  const b = document.createElement('button'); b.className = 'param'; b.dataset.param = p.key; b.setAttribute('aria-pressed', 'false');
+  b.innerHTML = `<span>${p.label}</span><b></b>`; b.onclick = () => openParam(activeParam === p.key ? '' : p.key); return b;
+ }));
+ syncParams();
+}
+function syncParams() {
+ document.querySelectorAll('.param').forEach(b => {const p = PARAMS.find(x => x.key === b.dataset.param); b.querySelector('b').textContent = paramText(p); b.classList.toggle('changed', prefs[p.key] !== p.def); b.setAttribute('aria-pressed', activeParam === p.key); b.classList.toggle('active', activeParam === p.key);});
+}
+function openParam(key) {
+ activeParam = key; const p = PARAMS.find(x => x.key === key);
+ $('reel').hidden = !!key; $('dial').hidden = !p || p.type === 'aspect'; $('aspects').hidden = p?.type !== 'aspect';
+ if (p && p.type !== 'aspect') {$('dialLabel').textContent = `${p.label} · ${p.code}`; drawRuler();}
+ if (p?.type === 'aspect') buildAspects();
+ if (!key) selectLook(prefs.look, false);
+ syncParams();
+}
+const ppu = p => 720 / ((p.max - p.min) / p.step) / p.step; // pixels per unit: whole range ≈ 720px
+function drawRuler() {
+ const p = PARAMS.find(x => x.key === activeParam); if (!p || p.type) return;
+ const track = $('rulerTrack'), k = ppu(p), minor = p.step * k, major = minor * ((p.max - p.min) / p.step >= 100 ? 10 : 5);
+ track.style.width = (p.max - p.min) * k + 'px';
+ track.style.setProperty('--minor', minor + 'px'); track.style.setProperty('--major', major + 'px');
+ track.style.transform = `translateX(${-(prefs[p.key] - p.min) * k}px)`;
+ track.style.setProperty('--zero', (p.def - p.min) * k + 'px');
+ $('dialValue').textContent = p.fmt(prefs[p.key]);
+ $('ruler').setAttribute('aria-valuemin', p.min); $('ruler').setAttribute('aria-valuemax', p.max); $('ruler').setAttribute('aria-valuenow', prefs[p.key]); $('ruler').setAttribute('aria-label', p.label);
+}
+function setParam(p, v) {
+ v = Math.round(Math.min(p.max, Math.max(p.min, v)) / p.step) * p.step; v = Number(v.toFixed(2));
+ if (v === prefs[p.key]) return; prefs[p.key] = v; savePrefs(); drawRuler(); syncParams();
+ if (Math.abs(v - p.def) < 1e-9) navigator.vibrate?.(6);
+}
+let drag = null;
+$('ruler').addEventListener('pointerdown', e => {const p = PARAMS.find(x => x.key === activeParam); if (!p) return; drag = {x: e.clientX, v: prefs[p.key], p}; $('ruler').setPointerCapture(e.pointerId);});
+$('ruler').addEventListener('pointermove', e => {if (drag) setParam(drag.p, drag.v - (e.clientX - drag.x) / ppu(drag.p));});
+const endDrag = () => {drag = null;}; $('ruler').addEventListener('pointerup', endDrag); $('ruler').addEventListener('pointercancel', endDrag);
+$('ruler').addEventListener('keydown', e => {const p = PARAMS.find(x => x.key === activeParam); if (!p) return; const d = {ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1}[e.key]; if (d) {e.preventDefault(); setParam(p, prefs[p.key] + d * p.step * (e.shiftKey ? 10 : 1));}});
+$('dialReset').onclick = () => {const p = PARAMS.find(x => x.key === activeParam); if (p) setParam(p, p.def);};
+function buildAspects() {
+ $('aspects').replaceChildren(...ASPECTS.map(a => {
+  const b = document.createElement('button'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', a.value === prefs.ratio);
+  b.innerHTML = `<i style="--r:${a.value || 4 / 3}"></i><strong>${a.label}</strong><span>${a.code}</span>`;
+  b.onclick = () => {prefs.ratio = a.value; savePrefs(); buildAspects(); syncParams(); layout();}; return b;
+ }));
+}
+
+// ---------- film roll ----------
+let rollURLs = [], selecting = false, selected = new Map(), viewing = null;
+function setRollThumb(blob, pulse) {
+ const img = $('rollThumb'); if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+ if (!blob) {img.removeAttribute('src'); img.dataset.url = ''; $('rollButton').classList.remove('has'); return;}
+ img.dataset.url = URL.createObjectURL(blob); img.src = img.dataset.url; $('rollButton').classList.add('has');
+ if (pulse) {$('rollButton').classList.remove('pulse'); void $('rollButton').offsetWidth; $('rollButton').classList.add('pulse');}
+ refreshRollCount();
+}
+async function refreshRollCount() {const list = await shots(); $('rollCount').hidden = !list.length; $('rollCount').textContent = list.length;}
+function openSheet(id) {$(id).hidden = false; requestAnimationFrame(() => $(id).classList.add('open'));}
+function closeSheet(id) {$(id).classList.remove('open'); setTimeout(() => {$(id).hidden = true;}, 220);}
+async function renderRoll() {
+ rollURLs.forEach(u => URL.revokeObjectURL(u)); rollURLs = [];
+ const list = await shots(), grid = $('rollGrid');
+ $('rollEmpty').hidden = !!list.length; $('rollTitleCount').textContent = list.length ? `${list.length} 張` : ''; $('rollSelect').hidden = !list.length;
+ grid.replaceChildren(...list.map(shot => {
+  const b = document.createElement('button'); b.className = 'cell'; b.dataset.id = shot.id;
+  const url = URL.createObjectURL(shot.thumb); rollURLs.push(url);
+  b.innerHTML = `<img src="${url}" alt=""><span>${lookById(shot.look).code}</span><i></i>`;
+  b.classList.toggle('selected', selected.has(shot.id));
+  b.onclick = () => selecting ? toggleSelect(shot, b) : openViewer(shot); return b;
+ }));
+ syncSelection();
+}
+async function toggleSelect(shot, cell) {
+ if (selected.has(shot.id)) selected.delete(shot.id); else {selected.set(shot.id, null); fileOf(shot.id, 'developed').then(blob => {if (selected.has(shot.id) && blob) {selected.set(shot.id, new File([blob], fileName(shot), {type: 'image/jpeg'})); syncSelection();}});}
+ cell.classList.toggle('selected', selected.has(shot.id)); syncSelection();
+}
+function syncSelection() {
+ $('rollSelect').textContent = selecting ? '完成' : '選取'; $('roll').classList.toggle('selecting', selecting);
+ const ready = [...selected.values()].filter(Boolean);
+ $('rollShare').hidden = $('rollDelete').hidden = !selecting; $('rollImport').hidden = selecting;
+ $('rollShare').textContent = `儲存 ${selected.size} 張`; $('rollShare').disabled = !selected.size || ready.length !== selected.size; $('rollDelete').disabled = !selected.size;
+}
+const fileName = shot => `EIGACAM-${lookById(shot.look).en.replace(/[^A-Z0-9]+/g, '-')}-${new Date(shot.created).toISOString().slice(0, 19).replace(/[-:T]/g, '')}.jpg`;
+$('rollButton').onclick = guard(async () => {selecting = false; selected.clear(); await renderRoll(); openSheet('roll');});
+$('rollSelect').onclick = () => {selecting = !selecting; selected.clear(); document.querySelectorAll('.cell').forEach(c => c.classList.remove('selected')); syncSelection();};
+$('rollImport').onclick = () => $('photoInput').click();
+$('rollShare').onclick = async () => {
+ const files = [...selected.values()].filter(Boolean); if (!files.length) return;
+ if (!canSharePhoto(files)) {files.forEach(f => download(f, f.name)); toast('此瀏覽器不能分享照片，已改為下載檔案'); return;}
+ try {const r = await sharePhoto(files); if (r.status === 'shared') toast('已交給系統；iPhone 請選「儲存影像」');} catch {toast('無法開啟分享選單，請再試一次');}
 };
-$('download').onclick=()=>{if(!preparedPhoto||exporting||sharing)return;download(preparedPhoto,preparedPhoto.name);$('exportStatus').textContent='已下載到檔案。要存入相簿，請使用上方儲存／分享。';};
-$('about').onclick=()=>$('aboutDialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-$('retry').onclick=()=>location.reload();$('preview').addEventListener('engine-error',e=>{$('failure').hidden=false;$('failureText').textContent=e.detail;});
-refresh();updateAvailability();
-if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
+$('rollDelete').onclick = guard(async () => {
+ if (!confirm(`刪除 ${selected.size} 張照片？這個動作無法復原。`)) return;
+ const ids = [...selected.keys()]; if (memoryRoll) ids.forEach(id => memoryRoll.delete(id)); else await deleteShots(ids);
+ selected.clear(); selecting = false; await renderRoll(); const [first] = await shots(); setRollThumb(first?.thumb);
+});
+document.querySelectorAll('[data-close-sheet]').forEach(b => b.onclick = () => closeSheet(b.closest('.sheet').id));
+
+// ---------- viewer ----------
+let viewerFile = null, viewerURL = '';
+async function openViewer(shot) {
+ viewing = shot; viewerFile = null; $('viewerStatus').textContent = ''; $('viewerShare').disabled = true;
+ const look = lookById(shot.look);
+ $('viewerTitle').textContent = `${look.code} ${look.name}`;
+ const aspect = ASPECTS.find(a => a.value === shot.ratio) ?? ASPECTS[0];
+ $('viewerMeta').textContent = `${shot.width} × ${shot.height} · ${aspect.code} · ${new Date(shot.created).toLocaleString('zh-TW', {dateStyle: 'medium', timeStyle: 'short'})}`;
+ $('viewerReel').replaceChildren(...allLooks().map(l => lookButton(l, redevelop, shot.look)));
+ openSheet('viewer'); await showDeveloped(shot);
+}
+async function showDeveloped(shot) {
+ const blob = await fileOf(shot.id, 'developed'); if (!blob || viewing !== shot) return;
+ if (viewerURL) URL.revokeObjectURL(viewerURL); viewerURL = URL.createObjectURL(blob); $('viewerImage').src = viewerURL;
+ viewerFile = new File([blob], fileName(shot), {type: 'image/jpeg'}); $('viewerShare').disabled = false;
+}
+const redevelop = guard(async lookId => {
+ const shot = viewing; if (!shot || shot.look === lookId || !$('viewerBusy').hidden) return;
+ $('viewerBusy').hidden = false; $('viewerShare').disabled = true;
+ try {
+  const original = await fileOf(shot.id, 'original'), look = lookById(lookId);
+  const out = await develop(original, {lut: lutFor(look.id), ratio: shot.ratio, settings: renderSettings(look, shot.dials, {mirror: shot.mirror})});
+  Object.assign(shot, {look: look.id, lookName: look.name, thumb: out.thumb, width: out.width, height: out.height});
+  if (memoryRoll) Object.assign(memoryRoll.get(shot.id), {shot, developed: out.jpeg}); else await updateShot(shot, out.jpeg);
+  $('viewerTitle').textContent = `${look.code} ${look.name}`;
+  document.querySelectorAll('#viewerReel .look').forEach(b => b.classList.toggle('active', b.dataset.look === look.id));
+  await showDeveloped(shot); renderRoll(); const [first] = await shots(); setRollThumb(first?.thumb);
+ } finally {$('viewerBusy').hidden = true;}
+});
+$('viewerBack').onclick = () => {closeSheet('viewer'); viewing = null;};
+$('viewerShare').onclick = async () => {
+ if (!viewerFile) return;
+ if (!canSharePhoto(viewerFile)) {download(viewerFile, viewerFile.name); $('viewerStatus').textContent = '此瀏覽器不能分享照片，已下載檔案。'; return;}
+ try {const r = await sharePhoto(viewerFile); $('viewerStatus').textContent = r.status === 'shared' ? '已交給系統分享選單。iPhone 請選「儲存影像」。' : r.status === 'cancelled' ? '已取消，照片仍在底片盒。' : '';}
+ catch {$('viewerStatus').textContent = '無法開啟分享選單，可改用「下載檔案」。';}
+};
+$('viewerDownload').onclick = () => {if (viewerFile) download(viewerFile, viewerFile.name);};
+$('viewerDelete').onclick = guard(async () => {
+ if (!viewing || !confirm('刪除這張照片？')) return;
+ if (memoryRoll) memoryRoll.delete(viewing.id); else await deleteShots([viewing.id]);
+ closeSheet('viewer'); viewing = null; await renderRoll(); const [first] = await shots(); setRollThumb(first?.thumb); refreshRollCount();
+});
+
+// ---------- wiring ----------
+$('shutter').onclick = shoot;
+$('startCamera').onclick = () => startCamera();
+$('idleHQ').onclick = nativeCapture; $('idleImport').onclick = () => $('photoInput').click();
+$('flip').onclick = () => startCamera(camera.facing === 'user' ? 'environment' : 'user');
+$('hqToggle').onclick = () => {prefs.hq = !prefs.hq; savePrefs(); updateControls(); toast(prefs.hq ? 'HQ 開啟：快門會打開系統相機，用最高畫質拍，回來自動沖印' : 'HQ 關閉：直接用取景畫面拍攝');};
+$('hudLook').onclick = () => openParam('');
+document.addEventListener('keydown', e => {if (e.target.closest('input, [role=slider]')) return; if (e.code === 'Space' || e.key === 'Enter' && e.target === document.body) {e.preventDefault(); shoot();} if (e.key === 'Escape') {if (!$('viewer').hidden) $('viewerBack').click(); else if (!$('roll').hidden) closeSheet('roll'); else openParam('');}});
+document.addEventListener('visibilitychange', () => {if (document.hidden && (live || pending)) {stopCamera(); resumeAfterNative = resumeAfterNative || 'visibility';} else if (!document.hidden && resumeAfterNative === 'visibility') {resumeAfterNative = false; startCamera();}});
+window.addEventListener('pagehide', () => camera.stop());
+
+buildParams(); buildReel(); updateControls(); layout();
+shots().then(list => {setRollThumb(list[0]?.thumb); refreshRollCount();});
+persist();
+// Re-open the camera automatically when permission was already granted.
+(async () => {try {const s = await navigator.permissions?.query({name: 'camera'}); if (s?.state === 'granted' || (s == null && store.get('eigacam.cameraGranted'))) startCamera();} catch {}})();
+// Bake the other looks while idle so swiping between them is instant.
+const idle = globalThis.requestIdleCallback ?? (f => setTimeout(f, 200));
+LOOKS.forEach((l, i) => idle(() => lutFor(l.id), {timeout: 2000 + i * 300}));
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});

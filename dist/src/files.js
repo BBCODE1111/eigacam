@@ -1,45 +1,18 @@
-import {validateRecipe} from './model.js';
-export async function decodePhoto(file,options={}){
-  if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('請選擇 JPEG、PNG 或 WebP。RAW／HEIC 請先轉為 sRGB JPEG。');
-  if(file.size>60*1024*1024)throw Error('照片超過 60 MB，請先縮小檔案。');
-  // Browser performs ICC conversion and EXIF orientation exactly once.
-  let image;
-  try{image=await createImageBitmap(file,{imageOrientation:'from-image',colorSpaceConversion:'default'});}catch{
-    image=await new Promise((resolve,reject)=>{const im=new Image(),url=URL.createObjectURL(file);im.onload=()=>{URL.revokeObjectURL(url);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(url);reject(Error('無法解碼照片'));};im.src=url;});
-  }
-  if(image.width*image.height>100_000_000){image.close?.();throw Error('照片超過 1 億像素，請先縮小。');}
-  // Normalize once through an explicit sRGB canvas. Both preview and full-size
-  // output then resample the same decoded pixels, avoiding browser JPEG decode
-  // scaling paths that can differ at small preview sizes.
-  const originalWidth=image.width,originalHeight=image.height;
-  const coarse=matchMedia('(pointer: coarse)').matches;
-  const safeEdge=options.maxEdge??(coarse?4096:16384),safePixels=options.maxPixels??(coarse?12_000_000:36_000_000);
-  const target=options.target;
-  if(target&&(target.width>originalWidth||target.height>originalHeight||target.width>safeEdge||target.height>safeEdge||target.width*target.height>safePixels)){
-    image.close?.();throw Error('目標尺寸超出裝置範圍，請改選較小尺寸。');
-  }
-  const scale=Math.min(1,safeEdge/Math.max(originalWidth,originalHeight),Math.sqrt(safePixels/(originalWidth*originalHeight)));
-  const normalized=document.createElement('canvas');normalized.width=Math.max(1,Math.floor(originalWidth*scale));normalized.height=Math.max(1,Math.floor(originalHeight*scale));
-  normalized.originalWidth=originalWidth;normalized.originalHeight=originalHeight;
-  const context=normalized.getContext('2d',{colorSpace:'srgb'});context.fillStyle='#fff';context.fillRect(0,0,normalized.width,normalized.height);context.imageSmoothingQuality='high';context.drawImage(image,0,0,normalized.width,normalized.height);
-  try{context.getImageData(0,0,1,1);}catch{image.close?.();throw Error('瀏覽器無法配置影像畫布，請先縮小照片。');}
-  image.close?.();
-  if(target&&(target.width!==normalized.width||target.height!==normalized.height)){
-    const output=document.createElement('canvas');output.width=target.width;output.height=target.height;output.originalWidth=originalWidth;output.originalHeight=originalHeight;
-    const targetContext=output.getContext('2d',{colorSpace:'srgb'});targetContext.imageSmoothingQuality='high';targetContext.drawImage(normalized,0,0,target.width,target.height);
-    normalized.width=normalized.height=1;return output;
-  }
-  return normalized;
+// Decode any image the browser understands (Safari also opens HEIC), apply EXIF orientation once,
+// and downscale only when the device cannot hold the full image.
+export async function decodeImage(blob, maxEdge = 8192, maxPixels = 12_600_000) {
+ if (!blob || !(blob.type === '' || /^image\//.test(blob.type))) throw Error('請選擇照片檔（JPEG、HEIC、PNG 或 WebP）。');
+ if (blob.size > 80 * 1024 * 1024) throw Error('照片超過 80 MB，請先縮小。');
+ let image;
+ try {image = await createImageBitmap(blob, {imageOrientation: 'from-image'});}
+ catch {image = await new Promise((resolve, reject) => {const im = new Image(), url = URL.createObjectURL(blob); im.onload = () => {URL.revokeObjectURL(url); resolve(im);}; im.onerror = () => {URL.revokeObjectURL(url); reject(Error('無法開啟這張照片。HEIC/RAW 請先轉為 JPEG。'));}; im.src = url;});}
+ const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
+ const s = Math.min(1, maxEdge / Math.max(width, height), Math.sqrt(maxPixels / (width * height)));
+ // Always hand WebGL a canvas: ImageBitmap uploads ignore UNPACK_FLIP_Y and would arrive upside down.
+ const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(width * s)); canvas.height = Math.max(1, Math.round(height * s));
+ const x = canvas.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(image, 0, 0, canvas.width, canvas.height); image.close?.();
+ return {image: canvas, width: canvas.width, height: canvas.height, originalWidth: width, originalHeight: height};
 }
-export function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);}
-export const jsonBlob=value=>new Blob([JSON.stringify(value,null,2)],{type:'application/json'});
-export function readDataURL(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(Error('讀取原圖失敗'));r.readAsDataURL(blob);});}
-export async function encodeProject(file,state){return {format:'filmroom-project',version:1,source:{name:file.name,type:file.type,data:await readDataURL(file)},recipe:state};}
-export async function readJSON(file,maxMB=2){if(file.size>maxMB*1024*1024)throw Error('檔案過大');try{return JSON.parse(await file.text());}catch{throw Error('JSON 檔案無法讀取');}}
-export function decodeProject(raw){
-  if(raw?.format!=='filmroom-project'||raw.version!==1)throw Error('這不是可支援的映室專案');
-  const state=validateRecipe(raw.recipe);const src=raw.source;
-  if(!src||!['image/jpeg','image/png','image/webp'].includes(src.type)||typeof src.data!=='string'||!src.data.startsWith(`data:${src.type};base64,`))throw Error('專案原圖格式無效');
-  const data=atob(src.data.split(',')[1]);if(data.length>60*1024*1024)throw Error('專案原圖過大');const bytes=Uint8Array.from(data,c=>c.charCodeAt(0));
-  return {state,file:new File([bytes],String(src.name||'photo.jpg').slice(0,160),{type:src.type})};
-}
+export function release(image) {if (!image) return; if (image.close) image.close(); else if (image instanceof HTMLCanvasElement) image.width = image.height = 1;}
+export function canvasBlob(canvas, type = 'image/jpeg', quality = .94) {return new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(Error('照片編碼失敗，記憶體可能不足。')), type, quality));}
+export function download(blob, name) {const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);}

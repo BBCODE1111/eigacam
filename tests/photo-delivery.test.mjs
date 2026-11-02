@@ -17,3 +17,9 @@ test('cancelling the share sheet is not reported as saved or an error',async()=>
 test('share failures propagate for visible fallback instead of silent download',async()=>{
  for(const share of [()=>Promise.reject(new Error('blocked')),()=>{throw new Error('blocked');}])await assert.rejects(sharePhoto(photo,{canShare:()=>true,share}),/blocked/);
 });
+test('several photos are shared together in one sheet',async()=>{
+ const second=new File(['jpeg-2'],'B.jpg',{type:'image/jpeg'});let shared;
+ const api={canShare:d=>d.files.length===2,share:d=>{shared=d.files;return Promise.resolve();}};
+ assert.deepEqual(await sharePhoto([photo,second],api),{status:'shared'});assert.deepEqual(shared,[photo,second]);
+ assert.equal(canSharePhoto([],api),false);
+});

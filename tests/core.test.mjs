@@ -1,21 +1,53 @@
-import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {identity,curveLUT,sampleCurve} from '../dist/src/curves.js';
-import {PRESETS,createState,findLayer,safeState} from '../dist/src/presets.js';
-import {validateRecipe,clone,History,outputDimensions} from '../dist/src/model.js';
-test('six presets have independent light and shadow layers with valid ranges',()=>{assert.equal(PRESETS.length,6);for(const p of PRESETS){const s=createState(p.id),v=validateRecipe(s);assert.equal(v.layers.length,9);assert.ok(findLayer(v,'bloom'));assert.ok(findLayer(v,'shadow'));assert.ok(findLayer(v,'curves'));assert.notDeepEqual(createState(p.id).layers.map(l=>l.id),s.layers.map(l=>l.id));}});
-test('identity LUT is exact in all four channels',()=>{const data=curveLUT(identity());for(let i=0;i<256;i++)for(let j=0;j<4;j++)assert.equal(data[i*4+j],i);});
-test('monotone curves never overshoot or reverse, including flat segments',()=>{for(const knots of [[0,0,50,100,100],[10,25,50,75,90],[0,10,20,30,100]]){let previous=0;for(let i=0;i<=1000;i++){const y=sampleCurve(knots,i/1000);assert.ok(y>=previous-1e-10);assert.ok(y>=knots[0]/100&&y<=knots[4]/100+1e-10);previous=y;}}});
-test('recipe round-trip retains curve edits and independent layer strengths',()=>{const s=createState('coast');Object.assign(findLayer(s,'grain').params,{amount:.35,size:8,roughness:1});findLayer(s,'curves').params.r2=57;findLayer(s,'bloom').strength=.22;findLayer(s,'shadow').enabled=false;const v=validateRecipe(JSON.parse(JSON.stringify(s)));assert.equal(findLayer(v,'grain').params.amount,.35);assert.equal(findLayer(v,'grain').params.size,8);assert.equal(findLayer(v,'curves').params.r2,57);assert.equal(findLayer(v,'bloom').strength,.22);assert.equal(findLayer(v,'shadow').enabled,false);});
-test('malformed controls cannot reach GPU',()=>{for(const mutate of [s=>s.mix=Infinity,s=>findLayer(s,'curves').params.m2=-1,s=>findLayer(s,'bloom').params.radius=50,s=>s.layers[0].type='script']){const s=createState();mutate(s);assert.throws(()=>validateRecipe(s));}});
-test('undo/redo retains curve edits and layer switch',()=>{const s=createState(),h=new History(s);findLayer(s,'curves').params.m2=60;h.push(s);findLayer(s,'shadow').enabled=false;h.push(s);assert.equal(findLayer(h.undo(),'shadow').enabled,true);assert.equal(findLayer(h.undo(),'curves').params.m2,45);assert.equal(findLayer(h.redo(),'curves').params.m2,60);});
-test('output respects original aspect ratio without upscaling',()=>{assert.deepEqual(outputDimensions(6000,4000,'2560'),{width:2560,height:1707});assert.deepEqual(outputDimensions(300,400,'2560'),{width:300,height:400});});
+import {LOOKS, findLook} from '../dist/src/looks.js';
+import {bakeLook, lookTransform, toneCurve, shaperEncode, shaperDecode, linearToOklab, oklabToLinear, parseCube, cropFor, outputSize, LUT_SIZE} from '../dist/src/color.js';
+import {renderSettings} from '../dist/src/develop.js';
 
-test('previously saved eight-layer recipes keep their controls and still import',()=>{
- const recipes=JSON.parse(readFileSync(new URL('./legacy-recipes.json',import.meta.url),'utf8'));
- for(const recipe of recipes){const restored=validateRecipe(safeState(recipe));assert.equal(restored.layers.length,8);assert.equal(restored.mix,recipe.state.mix);const controls=layers=>layers.map(({id,...layer})=>layer);assert.deepEqual(controls(restored.layers),controls(recipe.state.layers));}
+test('eight looks with unique ids, sequential codes and complete metadata', () => {
+ assert.equal(LOOKS.length, 8);
+ assert.equal(new Set(LOOKS.map(l => l.id)).size, 8);
+ LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone); assert.ok(l.grain); assert.ok(l.glow);});
+ assert.equal(findLook('nightcity').name, '賽博夜城'); assert.equal(findLook('missing').id, 'print');
 });
-test('six looks use monotonic channel curves and separate film shaping',()=>{for(const p of PRESETS){const s=createState(p.id),c=findLayer(s,'curves').params;assert.ok(findLayer(s,'film'));for(const ch of ['m','r','g','b'])for(let i=1;i<5;i++)assert.ok(c[ch+i]>=c[ch+(i-1)]);assert.equal(validateRecipe(s).revision,4);}});
-test('new and legacy recipe envelopes both import',()=>{for(const format of ['eigacam-recipe','luma-recipe']){const s=createState('iwai');assert.equal(validateRecipe(safeState({format,version:1,state:s})).id,'iwai');}assert.throws(()=>safeState({format:'unrelated',version:1}));assert.throws(()=>safeState({format:'eigacam-recipe',version:2}));});
-test('monochrome recipe starts at full strength without colour tints',()=>{const s=validateRecipe(createState('kurosawa'));assert.equal(s.mix,1);assert.equal(findLayer(s,'color').params.saturation,-100);assert.equal(findLayer(s,'bloom').params.amount,0);assert.equal(findLayer(s,'shadow').params.saturation,0);});
+test('every baked LUT is finite, in range and the right size', () => {
+ for (const l of LOOKS) {const lut = bakeLook(l, 9); assert.equal(lut.size, 9); assert.equal(lut.data.length, 9 ** 3 * 4); for (const v of lut.data) assert.ok(Number.isFinite(v) && v >= 0 && v <= 1);}
+ assert.equal(LUT_SIZE, 33);
+});
+test('looks never invert tones: brighter grey in, brighter out', () => {
+ for (const l of LOOKS) {let prev = -1; for (let i = 0; i <= 60; i++) {const x = shaperDecode(i / 60), [r, g, b] = lookTransform([x, x, x], l), y = .2126 * r + .7152 * g + .0722 * b; assert.ok(y >= prev - 1e-6, `${l.id} at ${x}`); prev = y;}}
+});
+test('looks keep black near black and white near white', () => {
+ for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .09, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .9, l.id); assert.ok(Math.min(...white) > .8, l.id);}
+});
+test('monochrome look is truly neutral', () => {
+ const mono = findLook('mono'); for (const c of [[.8, .1, .1], [.1, .6, .9], [.3, .3, .05]]) {const [r, g, b] = lookTransform(c, mono); assert.ok(Math.abs(r - g) < 1e-5 && Math.abs(g - b) < 1e-5);}
+});
+test('tone curve is monotonic with a soft shoulder above white', () => {
+ const t = {contrast: 1.3, pivot: .45, black: .02, white: .98, knee: .8}; let prev = -1;
+ for (let i = 0; i <= 400; i++) {const y = toneCurve(i / 100, t); assert.ok(y >= prev - 1e-12); assert.ok(y <= .98 + 1e-12); prev = y;}
+ assert.ok(toneCurve(1, t) > .9);
+});
+test('shaper and OKLab round-trip', () => {
+ for (const x of [0, .001, .18, 1, 3.5]) assert.ok(Math.abs(shaperDecode(shaperEncode(x)) - x) < 1e-9);
+ for (const c of [[.2, .4, .6], [1, 0, 0], [.05, .05, .05]]) {const back = oklabToLinear(...linearToOklab(...c)); back.forEach((v, i) => assert.ok(Math.abs(v - c[i]) < 1e-6));}
+});
+test('.cube parser reads 3D LUTs and rejects malformed files', () => {
+ const lines = []; for (let b = 0; b < 2; b++) for (let g = 0; g < 2; g++) for (let r = 0; r < 2; r++) lines.push(`${r} ${g} ${b}`);
+ const lut = parseCube(`# comment\nTITLE "Test LUT"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n${lines.join('\n')}\n`);
+ assert.equal(lut.size, 2); assert.equal(lut.title, 'Test LUT'); assert.equal(lut.input, 'display'); assert.deepEqual([...lut.data.slice(4, 8)], [1, 0, 0, 1]);
+ assert.throws(() => parseCube('LUT_3D_SIZE 2\n0 0 0'), /資料數量/);
+ assert.throws(() => parseCube('LUT_1D_SIZE 4\n0 0 0'), /3D/);
+ assert.throws(() => parseCube(`LUT_3D_SIZE 2\n${lines.join('\n').replace('1 1 1', '1 1 x')}`), /數值/);
+});
+test('cinema crops follow the photo orientation and never upscale', () => {
+ assert.deepEqual(cropFor(4032, 3024, 0), {x: 0, y: 0, w: 1, h: 1});
+ const scope = cropFor(4032, 3024, 2.39); assert.equal(scope.w, 1); assert.ok(Math.abs(4032 / (3024 * scope.h) - 2.39) < 1e-9); assert.ok(Math.abs(scope.y - (1 - scope.h) / 2) < 1e-12);
+ const tall = cropFor(3024, 4032, 2.39); assert.equal(tall.h, 1); assert.ok(Math.abs((4032) / (3024 * tall.w) - 2.39) < 1e-9);
+ assert.deepEqual(outputSize(4032, 3024, cropFor(4032, 3024, 2.39), 8192, 40e6), {width: 4032, height: 1687});
+ const capped = outputSize(8000, 6000, {x: 0, y: 0, w: 1, h: 1}, 8192, 12e6); assert.ok(capped.width * capped.height <= 12e6);
+});
+test('dials map to renderer settings relative to each look', () => {
+ const look = findLook('nightcity'), s = renderSettings(look, {ev: .5, strength: 50, grain: 200, glow: 0, sharpen: 35, warmth: -25});
+ assert.equal(s.exposure, .5); assert.equal(s.strength, .5); assert.equal(s.grain, look.grain.amount * 2); assert.equal(s.halation, 0); assert.equal(s.bloom, 0); assert.equal(s.warmth, -.5); assert.equal(s.sharpen, .35);
+});

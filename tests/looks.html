@@ -1,7 +1,11 @@
-<!doctype html><meta charset="utf-8"><title>EIGACAM — five looks proof</title><style>*{box-sizing:border-box}body{margin:0;padding:28px;background:#101211;color:#eee8db;font:13px system-ui}h1{font-size:24px}p{color:#aaa}main{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}figure{margin:0}img{width:100%;display:block;margin-bottom:12px}figcaption{font-size:14px;line-height:1.8;margin-bottom:10px}</style><h1>EIGACAM / 五種電影色彩</h1><p>相同照片實際通過調色引擎 · 預設 MIX · 非 AI 生成效果示意</p><main></main><script type="module">
-import {Renderer} from '../dist/src/engine/renderer.js';import {PRESETS,createState} from '../dist/src/presets.js';
-const host=document.querySelector('main'),canvas=document.createElement('canvas'),r=new Renderer(canvas);
-const sources=await Promise.all(['portrait','street'].map(async n=>{const i=new Image();i.src='../dist/assets/'+n+'.jpg';await i.decode();return i;}));
-for(const p of [{name:'原圖',id:null},...PRESETS]){const f=document.createElement('figure'),label=document.createElement('figcaption');label.textContent=p.name;f.append(label);host.append(f);for(const source of sources){const scale=420/Math.max(source.width,source.height);r.setSource(source,Math.round(source.width*scale),Math.round(source.height*scale));r.render(p.id?createState(p.id):{mix:1,exposure:0,layers:[]});const i=new Image();i.src=canvas.toDataURL('image/png');i.alt=p.name;f.append(i);}}
-r.destroy();document.title='PASS — Five looks proof';
+<!doctype html><meta charset="utf-8"><title>EIGACAM looks proof</title><style>body{margin:0;padding:8px;background:#0b0b0b;color:#ddd;font:12px system-ui}.row{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin-bottom:4px}figure{margin:0}img{width:100%;display:block}figcaption{padding:2px 0}</style><div id="out"></div><script type="module">
+import {Renderer} from '../dist/src/engine/renderer.js';import {LOOKS} from '../dist/src/looks.js';import {bakeLook} from '../dist/src/color.js';
+const canvas=document.createElement('canvas'),r=new Renderer(canvas),out=document.getElementById('out');
+const names=(new URLSearchParams(location.search).get('img')||'street,bar,cafe,portrait').split(',');
+const t0=performance.now();const luts=LOOKS.map(l=>bakeLook(l));const bakeMs=(performance.now()-t0)/LOOKS.length;
+for(const n of names){const im=new Image();im.src='../dist/assets/'+n+'.jpg';await im.decode();const row=document.createElement('div');row.className='row';out.append(row);
+ const s=480/Math.max(im.naturalWidth,im.naturalHeight);r.setSource(im,im.naturalWidth,im.naturalHeight);r.resize(Math.round(im.naturalWidth*s),Math.round(im.naturalHeight*s));
+ for(const [i,l] of [null,...LOOKS].entries()){r.setLUT(l?luts[i-1]:luts[0]);r.render(l?{sharpen:.35,strength:1,grain:l.grain.amount,grainSize:l.grain.size,halation:l.glow.halation,bloom:l.glow.bloom,glowHue:l.glow.hue,vignette:.12}:{strength:0});
+  const f=document.createElement('figure');const img=new Image();img.src=canvas.toDataURL();f.append(img);const c=document.createElement('figcaption');c.textContent=l?l.code+' '+l.name:'原圖';f.append(c);row.append(f);}}
+document.title='DONE bake '+bakeMs.toFixed(1)+'ms';
 </script>

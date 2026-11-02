@@ -1,56 +1,25 @@
-# EIGACAM camera redesign — design QA
+# EIGACAM v3 — design QA
 
-final result: passed
+Date: 2026-11-02. Scope: full redesign. A camera-first cinema monitor UI replaces the editor-style panels, a new LUT-based colour engine replaces the stacked-layer pipeline, and capture moves to full sensor resolution with a develop-to-roll flow.
 
-Date: 2026-10-24. Scope: selected option 2, updated to the user's subsequent request for five broad cinematic looks before director-specific expansions.
+## Why
 
-## Visual evidence
+User feedback: it felt like an editing app, not a cinema camera; photos looked low resolution and soft; the looks were weak.
 
-- Selected reference: ImageGen `exec-cdfd6f58-1d86-4c59-bc8b-2de06a5c04ef.png` (option 2).
-- Implemented view: [390 × 844 mobile camera](docs/mobile-camera.png).
-- [Responsive layout captures](docs/responsive.png): 320 × 568, 375 × 667 and 844 × 390.
-- [Actual engine output, two photos and all five looks](docs/five-looks.png).
+Root causes found in v2:
+- Live preview was processed at 960px and about 12fps, then stretched to the screen.
+- On iPhone, capture fell back to a video frame, and constraints with a frame-rate ideal steered the browser to small video modes.
+- Looks were built from HSV hue hacks across 9 stacked layers. The bloom "atmosphere" pass laid a haze over every pixel, which reads as blur.
 
-The selected reference and final implementation were viewed together in the same visual comparison. Hierarchy, proportions, spacing, typography, colors, icon family, borders, controls and responsive behavior were inspected.
+## Evidence
 
-The design retains the image-led camera surface, compact top brand/export row, four right-side tools, floating MIX strip, bottom look pill and ivory shutter flanked by album/flip actions. MIX is a single 56px strip with its close action. All primary buttons fit the tested viewports without page scrolling. The 390px portrait preview is approximately 390 × 585px, compared with approximately 320 × 212px in the previous mobile UI.
+- `docs/camera-portrait.jpg`: 390×844 live view, 2.39 scope matte, after a shot, and the viewer.
+- `docs/camera-landscape.jpg`: 844×390 live view and viewer.
+- `docs/eight-looks.jpg`: the production renderer on four photos × eight looks.
+- 100% crops of full-resolution develops were compared with and without sharpening: crisper edges, no ringing, no banding in skies.
+- End-to-end in Chromium with a 1920×1440 fake camera: live preview, frame-line change, EV ruler drag, look swipe, shutter (button and Space key), develop to IndexedDB roll, roll grid, viewer, re-develop. Tested at 390×844, 844×390 and 1280×800 with no page overflow and no console errors.
+- 28 unit tests: look metadata, LUT range, tonal monotonicity, black and white points, neutral monochrome, tone-curve shoulder, colour-space round trips, .cube parsing and errors, crop geometry, dial mapping, camera stream ownership, resolution upgrade, zoom, still capture and share payloads.
 
-Intentional adaptations: existing EIGACAM logo and real Tabler icons; actual imported photography instead of the generated mock's rainy-night photograph; five broad color names instead of quotes, following the newest scope; complete composition by default, with a full-bleed preview toggle; actual camera availability represented by disabled flip/export states. A reference image cannot validate grading, so the color comparison uses the production renderer on identical inputs.
+## Limitations
 
-## Fixed findings
-
-- P2: MIX tray collided with the lowest tool. Reduced MIX to one row and repositioned the tool stack.
-- P2: small portrait screens put the tool stack over the export button while a panel was open. Hide the stack temporarily on short portrait screens; the panel close action remains visible.
-- P2: landscape camera dock covered the export button. Corrected stacking order and verified button center hit targets.
-- No unresolved P0–P2 issues in the inspected flows and dimensions.
-
-## Functional evidence
-
-- 17 automated core/camera tests pass, including old recipe compatibility, camera stream ownership/races, monotonic curves and input validation.
-- GPU browser suite passes: all five looks alter pixels, MIX 0 preserves the source, black-and-white is truly neutral, curves and separate light/shadow switches affect output, preview/export agree at identical dimensions.
-- Grain browser suite passes: increasing strength increases measured noise, size/roughness change texture, no frame jitter, export/preview scaling and JPEG retention checked.
-- Synthetic-stream integration passes: live graded video updates, no microphone, flip releases prior stream, capture preserves sensor dimensions, tracks stop after capture, permission denial retains the still, export opens.
-- Actual UI exercised: import, look selection, MIX, coarse grain, light switch, curve slider and JPEG download (1707 × 2560).
-- Responsive DOM assertions confirm no page overflow and unobstructed shutter, album and export centers. Visual captures inspected as well.
-- Browser console showed no errors in the final local app check.
-
-Limitations: no physical iPhone/Android camera was used. Synthetic video validates the application flow, not device-specific camera quality, performance, permissions UI or mobile Safari behavior. Browser camera images use the stream's actual resolution; full-quality native-camera photos can be imported.
-
-## Photo album saving update — 2026-10-24
-
-The top action now reads 儲存照片. Opening it prepares the current JPEG before enabling 儲存／分享照片. The native share call executes directly in the subsequent tap handler, with a File-only payload. This follows [WebKit user activation guidance](https://webkit.org/blog/13862/the-user-activation-api/) and [Web Share file support checks](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/canShare).
-
-[390px save dialog](docs/save-to-photos.png) visually checked. Download is a separate secondary action. Unsupported sharing and share failures reveal an ordinary image for browser long-press saving. Cancellation leaves the photo available without a download; successful share does not claim the photo was saved to an album because the browser cannot observe the chosen system destination.
-
-Validation: 21 unit tests pass. The browser delivery integration checks preparation, JPEG-only payload, correct dimensions, cancel/failure/unsupported states, explicit-only download, regeneration after size changes and fresh output after look edits. Synthetic-camera regression also passes with preparation of the captured photo. Native iPhone/Android share sheets and actual album writes were not automated or physically tested; available actions depend on OS/browser.
-
-
-## Clear subject / soft light update — 2026-10-24
-
-Revision 4 recipes default to no whole-frame soften. Pale Letter narrows bloom to brighter highlights, lowers atmospheric veil and black lift, and uses finer, weaker default grain. Other looks also remove default whole-frame soften and use explicit grain amounts; maximum grain strength and manual controls remain available. This preserves source detail rather than inventing it through sharpening.
-
-Camera requests higher ideal dimensions without forcing unsupported modes. It prefers feature-detected ImageCapture stills (bounded requested width), falls back to a lossless PNG at actual video dimensions, and encodes JPEG at final save. LIVE reports actual video dimensions. A system-camera input is always available in More. New photos default to original-size export when device/GPU limits allow it.
-
-Validation: 25 unit tests pass, including high-resolution constraints, still-capture support/failure and stale-result disposal. GPU, synthetic-camera and save/share browser suites pass. The new quality browser fixture compares revision 3 and 4 through the production renderer: fine-bar contrast 50.69 → 59.85 DN, dark-patch mean 62.51 → 45.61 DN, and highlight halo remains measurable (max 34.67 DN). These are synthetic fixture metrics, not a universal sharpness rating. Full-resolution same-source desk and portrait comparisons were visually inspected; eyes, hair, keyboard edges and dark density remain more legible with the revised pale look.
-
-User photographs and desk comparisons remain in ignored/local files and are excluded from publication. No physical phone was available for validation: negotiated camera resolution, native still support and system-camera routing must still be checked on the user's device. Higher requested dimensions do not guarantee native-camera quality, and existing low-resolution captures cannot recover missing detail.
+Not tested on a physical iPhone or Android camera. The fake camera validates flow and geometry only. It does not validate device resolution negotiation, frame rate, Safari's ImageBitmap/FLIP_Y behaviour, or the HQ native-camera round trip. Developing a 12MP photo on a phone will take noticeably longer than on desktop.
