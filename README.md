@@ -17,27 +17,21 @@
 - **底片盒**：所有照片都先保存在這台裝置。可以一次選多張、一次分享或儲存；也可以從原始檔換一種色彩重新沖印。
 - **匯入**：相簿照片（JPEG、HEIC、PNG、WebP）可以匯入沖印，也可以匯入 `.cube` 3D LUT 當作自訂色彩。
 
-## 九種電影色彩
+## 色彩
 
-![九種色彩](docs/looks.jpg)
+![三種色彩](docs/looks.jpg)
 
 | 代號 | 名稱 | 方向 |
 |---|---|---|
-| 01 | 院線拷貝 CINEMA PRINT | 電影院拷貝的厚黑與暖亮部，綠色偏橄欖，萬用 |
-| 02 | 好萊塢大片 TEAL & ORANGE | 膚色偏暖橙、環境偏青藍 |
-| 03 | 賽博夜城 NEON CITY | 青藍暗部、洋紅霓虹與光暈，高飽和、深黑 |
-| 04 | 九龍夜色 KOWLOON NIGHT | 鎢絲燈的黃綠、濃紅與煙霧感黑位 |
-| 05 | 晴空動畫 ANIME SKY | 透亮天藍、清澈綠意、發光的亮部 |
-| 06 | 日系淡彩 PASTEL FILM | 奶白亮部、薄荷綠陰影、低反差 |
-| 07 | 銀殘留 BLEACH BYPASS | 低飽和、高反差、金屬冷調 |
-| 08 | 黑白銀鹽 SILVER MONO | 紅濾鏡黑白、扎實的黑、細膩顆粒 |
-| 09 | 霓虹雨夜 NEON RAIN | 依照網友分享的 Lightroom 賽博龐克參數：紫色陰影、洋紅高光、青藍霓虹 |
+| 01 | 賽博夜城 NEON CITY | 青藍暗部、洋紅霓虹與光暈，高飽和、深黑（Cyberpunk 2077 印象） |
+| 02 | 霓虹雨夜 NEON RAIN | 依照網友分享的 Lightroom 賽博龐克參數：紫色陰影、洋紅高光、青藍霓虹 |
+| 03 | 情書 LOVE LETTER | 雪地冬天的電影感：偏亮、低反差、青白雪光與柔焦，膚色保有溫度 |
 
-09 用的是 Lightroom 參數模式（`lr`）：在 `dist/src/looks.js` 填入 Lightroom 的基本、HSL、顏色分級與去朦朧數值，就能建立新風格。這是近似換算，因為 Lightroom 處理的是 RAW，手機照片已經套過相機的色調。
+色彩是創作詮釋，不是任何電影、遊戲或片商的官方 LUT。也可以匯入自己的 `.cube` LUT。
+
+02 用的是 Lightroom 參數模式（`lr`）：在 `dist/src/looks.js` 填入 Lightroom 的基本、HSL、顏色分級與去朦朧數值，就能建立新風格。這是近似換算，因為 Lightroom 處理的是 RAW，手機照片已經套過相機的色調。
 
 Lightroom 預設檔：[`presets/EIGACAM-Neon-Rain.xmp`](https://bbcode1111.github.io/eigacam/presets/EIGACAM-Neon-Rain.xmp)。在 Lightroom 行動版選「預設集 → ⋯ → 匯入預設集」，桌面版用「預設集 ＋ → 匯入預設集」。白平衡是相對調整（色溫 −22、色調 +25），適用 JPEG/HEIC；RAW 檔請手動把色溫調冷一些、色調往洋紅。
-
-色彩是創作詮釋，不是任何電影、遊戲或片商的官方 LUT。
 
 ## 畫質
 

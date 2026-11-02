@@ -21,7 +21,7 @@ const PARAMS = [
  {key: 'sharpen', code: 'SHARP', label: '銳利', min: 0, max: 100, step: 5, def: 35, fmt: v => String(v)}
 ];
 const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];
-const defaults = Object.fromEntries([['look', 'print'], ['hq', false], ...PARAMS.map(p => [p.key, p.def])]);
+const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ...PARAMS.map(p => [p.key, p.def])]);
 const store = {get(k) {try {return JSON.parse(localStorage.getItem(k));} catch {return null;}}, set(k, v) {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}};
 const prefs = {...defaults, ...(store.get('eigacam.prefs') ?? {})};
 const savePrefs = () => store.set('eigacam.prefs', prefs);
@@ -35,7 +35,7 @@ const allLooks = () => custom ? [...LOOKS, custom.look] : LOOKS;
 const lookById = id => id === 'custom' && custom ? custom.look : findLook(id);
 const luts = new Map();
 function lutFor(id) {if (id === 'custom' && custom) return custom.lut; if (!luts.has(id)) luts.set(id, bakeLook(findLook(id))); return luts.get(id);}
-if (prefs.look === 'custom' && !custom) prefs.look = 'print';
+if (prefs.look !== 'custom' || !custom) prefs.look = findLook(prefs.look).id; // removed looks fall back to the first one
 
 // ---------- UI helpers ----------
 let toastTimer;

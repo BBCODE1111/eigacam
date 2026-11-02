@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>develop</title><body style="margin:0;background:#000"><script type="module">
 import {develop,renderSettings} from '../dist/src/develop.js';import {LOOKS,findLook} from '../dist/src/looks.js';import {bakeLook} from '../dist/src/color.js';
-const q=new URLSearchParams(location.search),look=findLook(q.get('look')||'print');
+const q=new URLSearchParams(location.search),look=findLook(q.get('look')||'nightcity');
 const blob=await (await fetch('../dist/assets/'+(q.get('img')||'street')+'.jpg')).blob();
 const dials={ev:0,strength:100,grain:100,glow:100,sharpen:Number(q.get('sharp')??35),warmth:0};
 const t=performance.now();const out=await develop(blob,{lut:bakeLook(look),ratio:Number(q.get('ratio')||0),settings:renderSettings(look,dials)});
