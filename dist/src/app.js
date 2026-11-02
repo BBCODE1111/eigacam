@@ -34,7 +34,7 @@ function customLook(lut) {return {id: 'custom', code: 'LUT', name: '自訂 LUT',
 const allLooks = () => custom ? [...LOOKS, custom.look] : LOOKS;
 const lookById = id => id === 'custom' && custom ? custom.look : findLook(id);
 const luts = new Map();
-function lutFor(id) {if (id === 'custom' && custom) return custom.lut; if (!luts.has(id)) luts.set(id, bakeLook(findLook(id))); return luts.get(id);}
+function lutFor(id) {if (id === 'custom' && custom) return custom.lut; const key = findLook(id).lutOf ?? findLook(id).id; if (!luts.has(key)) luts.set(key, bakeLook(findLook(key))); return luts.get(key);} // variants share their base LUT
 if (prefs.look !== 'custom' || !custom) prefs.look = findLook(prefs.look).id; // removed looks fall back to the first one
 
 // ---------- UI helpers ----------

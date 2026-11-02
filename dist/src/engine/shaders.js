@@ -18,11 +18,35 @@ uniform vec2 outSize,direction,grainSeed;
 uniform vec3 wb,glowTint;
 uniform float exposure,sharpen,strength,grainAmount,grainSize,halation,bloom,vignette,threshold,lutSize,lutDisplay;
 uniform vec3 domainMin,domainMax;
+uniform int maskCount,maskView;
+uniform float srcAspect;
+uniform vec4 mA[8],mB[8],mC[8],mD[8];
 
 vec3 decode(vec3 x){return mix(x/12.92,pow(max((x+.055)/1.055,vec3(0.)),vec3(2.4)),step(vec3(.04045),x));}
 vec3 encode(vec3 x){x=max(x,vec3(0.));return mix(x*12.92,1.055*pow(x,vec3(1./2.4))-.055,step(vec3(.0031308),x));}
 float lum(vec3 x){return dot(x,vec3(.2126,.7152,.0722));}
-vec2 sourceUV(vec2 p){vec2 q=vec2(mirror>.5?1.-p.x:p.x,1.-p.y);vec2 img=crop.xy+q*crop.zw;return vec2(img.x,1.-img.y);}
+vec2 imageCoord(vec2 p){vec2 q=vec2(mirror>.5?1.-p.x:p.x,1.-p.y);return crop.xy+q*crop.zw;}
+vec2 sourceUV(vec2 p){vec2 img=imageCoord(p);return vec2(img.x,1.-img.y);}
+vec3 hsv2rgb(vec3 c){vec3 p=abs(fract(c.xxx+vec3(0.,2./3.,1./3.))*6.-3.);return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y);}
+vec3 rgb2hsv(vec3 c){vec4 K=vec4(0.,-1./3.,2./3.,-1.);vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g));vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r));float d=q.x-min(q.w,q.y);return vec3(abs(q.z+(q.w-q.y)/(6.*d+1e-10)),d/(q.x+1e-10),q.x);}
+// Mask selection: 0 linear gradient, 1 radial, 2 luminance range, 3 colour range. Measured on the unadjusted scene.
+float maskValue(int i,vec2 img,vec3 base){
+ vec4 a=mA[i],b=mB[i];float m=1.;
+ if(a.x<.5){vec2 s=vec2(srcAspect,1.);vec2 ab=(b.zw-b.xy)*s;float t=dot((img-b.xy)*s,ab)/max(dot(ab,ab),1e-6);m=1.-smoothstep(0.,1.,t);}
+ else if(a.x<1.5){float r=length((img-b.xy)/max(b.zw,vec2(1e-3)));m=1.-smoothstep(1.-max(a.z,.02),1.,r);}
+ else if(a.x<2.5){float L=lum(clamp(encode(base),0.,1.)),f=max(b.z,.005);float lo=b.x<=0.?1.:smoothstep(b.x-f,b.x+f,L);float hi=b.y>=1.?1.:1.-smoothstep(b.y-f,b.y+f,L);m=lo*hi;}
+ else{vec3 h=rgb2hsv(clamp(encode(base),0.,1.));float d=abs(h.x-b.x);d=min(d,1.-d);m=(1.-smoothstep(b.y*.5,b.y*.5+max(b.z,.003),d))*smoothstep(.05,.18,h.y);}
+ return a.y>.5?1.-m:m;
+}
+vec3 adjust(vec3 c,float m,int i){
+ vec4 k=mC[i],l=mD[i];
+ c*=exp2(k.x*m);
+ vec3 g=vec3(exp(.5*k.y),exp(-.35*k.z),exp(-.6*k.y));g/=dot(g,vec3(.2126,.7152,.0722));c*=mix(vec3(1.),g,m);
+ float y=lum(c);c=max(mix(vec3(y),c,1.+k.w*m),0.);
+ c=.18*pow(max(c,vec3(1e-6))/.18,vec3(1.+l.x*.6*m));
+ vec3 gel=hsv2rgb(vec3(l.y,1.,1.));gel/=max(lum(gel),.05);c*=mix(vec3(1.),mix(vec3(1.),gel,.55),l.z*m);
+ return c;
+}
 vec3 scene(vec2 t){return decode(texture(src,t).rgb)*exposure*wb;}
 
 uint hashU(uvec2 q){uint n=q.x*1597334677u+q.y*3812015801u+2798796415u;n=(n^(n>>16u))*2246822519u;n=(n^(n>>13u))*3266489917u;return n^(n>>16u);}
@@ -49,6 +73,8 @@ void main(){
  vec3 n=(scene(t+vec2(px.x,0.))+scene(t-vec2(px.x,0.))+scene(t+vec2(0.,px.y))+scene(t-vec2(0.,px.y)))*.25;
  float L=sqrt(max(lum(c),0.)),N=sqrt(max(lum(n),0.)),d=L-N;d=d/(1.+abs(d)*6.);
  float sharpL=max(L+sharpen*1.6*d,0.);c*=sharpL*sharpL/max(L*L,1e-6);
+ vec2 img=imageCoord(uv);vec3 base=c;float shown=0.;
+ for(int i=0;i<8;i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m,i);if(i==maskView-1)shown=m;}
  vec3 neutral=clamp(encode(c),0.,1.);
  vec3 glow=texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4);
  vec3 color=mix(neutral,lookup(c+glow),strength);
@@ -61,6 +87,7 @@ void main(){
   float y=lum(color);float w=(.35+.65*pow(max(0.,1.-abs(y-.45)*1.8),.7))*smoothstep(0.,.1,y)*(1.-.7*smoothstep(.8,1.,y));
   color+=gn*grainAmount*w;
  }
+ if(maskView>0)color=mix(color,vec3(1.,.18,.28),shown*.55);
  color+=(hash(ivec2(gl_FragCoord.xy))-.5)/255.; // dither against banding in smooth skies
  frag=vec4(clamp(color,0.,1.),1.);
 }`;

@@ -4,8 +4,8 @@ import {LOOKS, findLook} from '../dist/src/looks.js';
 import {bakeLook, lookTransform, toneCurve, shaperEncode, shaperDecode, linearToOklab, oklabToLinear, parseCube, cropFor, outputSize, LUT_SIZE} from '../dist/src/color.js';
 import {renderSettings} from '../dist/src/develop.js';
 
-test('three kept looks with unique ids, sequential codes and complete metadata', () => {
- assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter']);
+test('kept looks and Love Letter variants with unique ids, sequential codes and complete metadata', () => {
+ assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library']);
  LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone || l.lr); assert.ok(l.grain); assert.ok(l.glow);});
  assert.equal(findLook('nightcity').name, '賽博夜城'); assert.equal(findLook('missing').id, 'nightcity'); assert.equal(findLook('loveletter').name, '情書');
 });
@@ -54,4 +54,33 @@ test('Lightroom-style looks follow their slider values', async () => {
  const dark = lightroomTransform([.01, .01, .01], {basic: {blacks: -60}}); assert.ok(dark[0] < lightroomTransform([.01, .01, .01], {})[0]);
  const desat = lightroomTransform([.4, .35, .02], {hsl: {yellow: [0, -100, 0], orange: [0, -100, 0]}}); assert.ok(Math.max(...desat) - Math.min(...desat) < .05);
  const rain = findLook('neonrain'); const shadow = lookTransform([.02, .02, .02], rain); assert.ok(shadow[2] > shadow[1], 'purple shadows'); const hi = lookTransform([.7, .7, .7], rain); assert.ok(hi[0] > hi[1] && hi[2] > hi[1], 'magenta highlights');
+});
+
+import {createMask, duplicateMask, sanitizeMasks, packMasks, MAX_MASKS} from '../dist/src/masks.js';
+test('masks duplicate independently and can be inverted', () => {
+ const m = createMask('radial', {adj: {ev: .5}}), copy = duplicateMask(m, {invert: true});
+ assert.notEqual(copy.id, m.id); assert.equal(copy.invert, true); assert.equal(m.invert, false); assert.equal(copy.adj.ev, .5);
+ copy.adj.ev = -1; assert.equal(m.adj.ev, .5);
+ assert.equal(duplicateMask(copy).name, '圓形 拷貝');
+});
+test('stored masks are sanitised before reaching the GPU', () => {
+ const clean = sanitizeMasks([{type: 'luma', lo: -50, hi: 999, adj: {ev: 40, sat: 'x'}}, {type: 'script'}, null, ...Array(12).fill({type: 'radial'})]);
+ assert.equal(clean.length, MAX_MASKS); assert.equal(clean[0].lo, 0); assert.equal(clean[0].hi, 100); assert.equal(clean[0].adj.ev, 2); assert.equal(clean[0].adj.sat, 0);
+ assert.deepEqual(sanitizeMasks('nope'), []);
+});
+test('only enabled, non-neutral masks are packed for the shader', () => {
+ const a = createMask('linear', {adj: {temp: 30}}), b = createMask('color'), c = createMask('luma', {enabled: false, adj: {ev: 1}}), d = createMask('radial', {invert: true, adj: {sat: -50}});
+ const packed = packMasks([a, b, c, d]);
+ assert.equal(packed.count, 2); assert.equal(packed.a[0], 0); assert.equal(packed.a[4], 1); assert.equal(packed.a[5], 1);
+ assert.ok(Math.abs(packed.c[1] - .3) < 1e-6); assert.ok(Math.abs(packed.c[7] + .5) < 1e-6);
+});
+test('Love Letter keeps skin warm while greens stay muted', async () => {
+ const {toLinear, linearToOklab} = await import('../dist/src/color.js');
+ const chroma = rgb => {const [, a, b] = linearToOklab(...rgb.map(v => toLinear(v / 255))); return Math.hypot(a, b);};
+ const look = findLook('loveletter'), through = rgb => lookTransform(rgb.map(v => toLinear(v / 255)), look).map(v => v * 255);
+ for (const skin of [[224, 172, 150], [190, 130, 105], [120, 75, 60]]) assert.ok(chroma(through(skin)) > chroma(skin) * .85, String(skin));
+ assert.ok(chroma(through([60, 110, 50])) < chroma([60, 110, 50]) * .5);
+});
+test('variants reuse the base LUT and carry their masks', () => {
+ const snow = findLook('loveletter-snow'); assert.equal(snow.lutOf, 'loveletter'); assert.ok(snow.masks.some(m => m.type === 'color')); assert.equal(findLook('loveletter').masks, undefined);
 });
