@@ -35,6 +35,8 @@
 
 09 用的是 Lightroom 參數模式（`lr`）：在 `dist/src/looks.js` 填入 Lightroom 的基本、HSL、顏色分級與去朦朧數值，就能建立新風格。這是近似換算，因為 Lightroom 處理的是 RAW，手機照片已經套過相機的色調。
 
+Lightroom 預設檔：[`presets/EIGACAM-Neon-Rain.xmp`](https://bbcode1111.github.io/eigacam/presets/EIGACAM-Neon-Rain.xmp)。在 Lightroom 行動版選「預設集 → ⋯ → 匯入預設集」，桌面版用「預設集 ＋ → 匯入預設集」。白平衡是相對調整（色溫 −22、色調 +25），適用 JPEG/HEIC；RAW 檔請手動把色溫調冷一些、色調往洋紅。
+
 色彩是創作詮釋，不是任何電影、遊戲或片商的官方 LUT。
 
 ## 畫質
