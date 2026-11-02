@@ -28,14 +28,16 @@ export const LOOKS = [
     grain: {amount: .015, size: 1.2}, glow: {halation: .3, bloom: .2, hue: 300}
   },
   {
-    id: 'loveletter', code: '03', name: '情書', en: 'LOVE LETTER', swatch: ['#9fb8bd', '#dfe6e3', '#f4efe6'],
-    desc: '雪地小樽的冬天：偏亮、低反差、青白的雪光與柔焦，膚色保有一點溫度，像九〇年代岩井俊二的底片。',
-    gain: [1.3, 1.34, 1.38], sat: .8, desatHi: .45, desatSh: .1,
-    hues: [[29, 20, 2, .8, 0], [55, 20, -2, .95, .03], [105, 25, -4, .82, .01], [142, 30, 18, .7, .02], [195, 30, 0, .95, .02], [262, 30, -18, .75, .03], [328, 25, 0, .8, 0]],
-    shadows: [198, .022], highlights: [205, .01],
-    tone: {contrast: .8, pivot: .4, black: .1, white: .99, knee: .7},
+    id: 'loveletter', code: '03', name: '情書', en: 'LOVE LETTER', swatch: ['#3a2e24', '#c9b29c', '#f6eaec'],
+    desc: '岩井俊二式的柔光：暖米色中間調、褐色微亮的黑、帶粉紫的白，低飽和、濛濛的光暈；冷景會偏向淡藍紫。',
+    // Tuned against frames from the film: shadows ≈ rgb(50,40,30), mids ≈ rgb(135,115,100), whites ≈ rgb(247,234,237).
+    gain: [1.24, 1.15, 1.03], sat: .72, desatHi: .35, desatSh: .3,
+    hues: [[29, 20, 0, .85, 0], [55, 20, -2, .95, .02], [105, 25, -6, .75, 0], [142, 30, -22, .6, 0], [195, 30, 0, .7, 0], [262, 30, 10, .85, .03], [328, 25, 0, .8, 0]],
+    shadows: [62, .03], highlights: [350, .012],
+    tone: {contrast: .8, pivot: .42, black: .06, white: .995, knee: .72},
+    print: [[.03, 1, 1], [.015, 1, .985], [0, 1, .985]],
     vignette: .06,
-    grain: {amount: .055, size: 1.8}, glow: {halation: .08, bloom: .45, hue: 40}
+    grain: {amount: .05, size: 1.8}, glow: {halation: .15, bloom: .5, hue: 15}
   }
 ];
 
