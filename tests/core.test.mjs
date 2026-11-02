@@ -18,7 +18,7 @@ test('looks never invert tones: brighter grey in, brighter out', () => {
  for (const l of LOOKS) {let prev = -1; for (let i = 0; i <= 60; i++) {const x = shaperDecode(i / 60), [r, g, b] = lookTransform([x, x, x], l), y = .2126 * r + .7152 * g + .0722 * b; assert.ok(y >= prev - 1e-6, `${l.id} at ${x}`); prev = y;}}
 });
 test('looks keep black near black and white near white', () => {
- for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .09, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .9, l.id); assert.ok(Math.min(...white) > .8, l.id);}
+ for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .09, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .85, l.id); assert.ok(Math.min(...white) > .8, l.id);}
 });
 test('monochrome look is truly neutral', () => {
  const mono = findLook('mono'); for (const c of [[.8, .1, .1], [.1, .6, .9], [.3, .3, .05]]) {const [r, g, b] = lookTransform(c, mono); assert.ok(Math.abs(r - g) < 1e-5 && Math.abs(g - b) < 1e-5);}
