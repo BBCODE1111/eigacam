@@ -50,7 +50,7 @@ python3 -m http.server 8766   # 開啟 http://localhost:8766/dist/
 node --test tests/*.test.mjs
 ```
 
-瀏覽器驗證頁：`/tests/looks.html`（八種色彩在範例照片上的實際輸出）、`/tests/develop.html?img=street&look=nightcity`（全解析度沖印）。
+瀏覽器驗證頁：`/tests/looks.html`（所有色彩在範例照片上的實際輸出）、`/tests/develop.html?img=street&look=nightcity`（全解析度沖印）。
 
 推送到 `main` 後，GitHub Actions 會先跑測試，再把 `dist/` 部署到 GitHub Pages。
 
