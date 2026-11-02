@@ -43,6 +43,7 @@ export function toneCurve(v, t) {
 }
 
 export function lookTransform(rgb, look) {
+  if (look.lr) return lightroomTransform(rgb, look.lr);
   let [r, g, b] = rgb.map((v, i) => v * (look.gain?.[i] ?? 1));
   if (look.mono) { const y = r * look.mono[0] + g * look.mono[1] + b * look.mono[2]; r = g = b = y; }
   let [L, A, B] = linearToOklab(Math.max(0, r), Math.max(0, g), Math.max(0, b));
@@ -117,4 +118,78 @@ export function outputSize(width, height, crop, maxEdge, maxPixels) {
   let w = width * crop.w, h = height * crop.h;
   const s = Math.min(1, maxEdge / Math.max(w, h), Math.sqrt(maxPixels / (w * h)));
   return { width: Math.max(1, Math.round(w * s)), height: Math.max(1, Math.round(h * s)) };
+}
+
+// ---------- Lightroom-style develop settings ----------
+// An approximation of Lightroom's Basic, HSL/Color, Color Grading and Dehaze panels, so presets
+// people share as slider values can be typed in directly. Values use Lightroom's own ranges.
+const HSL_BANDS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];
+const HSL_CENTERS = [0, 30, 60, 120, 180, 240, 270, 300];
+function rgbToHsv(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 1e-9) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [(h * 60 + 360) % 360, max > 1e-9 ? d / max : 0, max];
+}
+function hsvToRgb(h, s, v) {
+  const f = n => {const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1));};
+  return [f(5), f(3), f(1)];
+}
+// Piecewise-linear interpolation between neighbouring Lightroom colour bands.
+function bandValue(h, values) {
+  for (let i = 0; i < 8; i++) {
+    const a = HSL_CENTERS[i], b = i < 7 ? HSL_CENTERS[i + 1] : 360;
+    if (h >= a && h < b) {const t = (h - a) / (b - a); return values[i] * (1 - t) + values[(i + 1) % 8] * t;}
+  }
+  return values[0];
+}
+const display = v => toDisplay(Math.max(0, v));
+export function lightroomTransform(rgb, lr) {
+  const b = lr.basic ?? {}, t = (b.temp ?? 0) / 100, tint = (b.tint ?? 0) / 100;
+  let gains = [Math.exp(.3 * t), Math.exp(-.28 * tint), Math.exp(-.3 * t)];
+  const gl = luminance(...gains); gains = gains.map(v => v / gl);
+  let lin = rgb.map((v, i) => Math.max(0, v) * gains[i] * 2 ** (b.exposure ?? 0));
+  // Tone panel on display luminance, applied as a ratio so hues are preserved.
+  let Y = toDisplay(luminance(...lin));
+  const Y0 = Math.max(Y, 1e-6);
+  const k = .85; if (Y > k) Y = k + (1 - k) * Math.tanh((Y - k) / (1 - k));
+  const c = 1 + (b.contrast ?? 0) / 100 * .5 + (lr.dehaze ?? 0) / 100 * .25;
+  Y = Y < .5 ? .5 * (Y / .5) ** c : 1 - .5 * ((1 - Y) / .5) ** c;
+  Y += (b.highlights ?? 0) / 100 * .11 * 6.75 * Y * Y * (1 - Y);
+  Y += (b.shadows ?? 0) / 100 * .1 * 6.75 * Y * (1 - Y) ** 2;
+  Y += (b.whites ?? 0) / 100 * .12 * Y ** 3;
+  Y += (b.blacks ?? 0) / 100 * .08 * (1 - Y) ** 4;
+  Y -= (lr.dehaze ?? 0) / 100 * .03 * (1 - Y) ** 2;
+  Y = Math.min(1, Math.max(0, Y));
+  const ratio = toLinear(Y) / Math.max(toLinear(Y0), 1e-9);
+  let d = lin.map(v => display(v * ratio));
+  // HSL / Color mixer.
+  let [h, s, v] = rgbToHsv(...d.map(x => Math.min(1, x)));
+  const hsl = lr.hsl ?? {}, pick = i => HSL_BANDS.map(n => hsl[n]?.[i] ?? 0);
+  const dh = bandValue(h, pick(0)), ds = bandValue(h, pick(1)), dl = bandValue(h, pick(2));
+  const presence = Math.min(1, s * 2.5);
+  h = (h + dh * .3 * presence + 360) % 360;
+  s *= 1 + ds / 100 * (ds > 0 ? .9 : 1) * presence;
+  s = Math.min(1, s);
+  const vib = (b.vibrance ?? 0) / 100, sat = (b.saturation ?? 0) / 100 + (lr.dehaze ?? 0) / 100 * .2;
+  s = Math.min(1, Math.max(0, s * (1 + vib * (1 - s) * 1.2) * (1 + sat)));
+  d = hsvToRgb(h, s, v);
+  const lumScale = 1 + dl / 100 * .35 * presence;
+  d = d.map(x => x * lumScale);
+  // Color grading: shadows / midtones / highlights wheels, blending and balance.
+  const g = lr.grading;
+  if (g) {
+    const Yd = Math.min(1, Math.max(0, luminance(...d))), blend = (g.blending ?? 50) / 100, centre = .5 - (g.balance ?? 0) / 100 * .25, width = .12 + .3 * blend;
+    const masks = {
+      shadows: 1 - smooth(Math.max(.01, centre - width - .2), centre + width * .5, Yd),
+      highlights: smooth(centre - width * .5, Math.min(.99, centre + width + .2), Yd),
+      midtones: Math.exp(-(((Yd - centre) / (.18 + width * .5)) ** 2))
+    };
+    for (const [zone, m] of Object.entries(masks)) {
+      const w = g[zone]; if (!w) continue;
+      const tint = hsvToRgb(w.hue ?? 0, 1, 1), tl = luminance(...tint), amt = (w.sat ?? 0) / 100 * .22 * m;
+      d = d.map((x, i) => x + (tint[i] - tl) * amt + (w.lum ?? 0) / 100 * .1 * m);
+    }
+  }
+  return d.map(x => Math.min(1, Math.max(0, x)));
 }

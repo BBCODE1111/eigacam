@@ -1,11 +1,11 @@
-<!doctype html><meta charset="utf-8"><title>EIGACAM looks proof</title><style>body{margin:0;padding:8px;background:#0b0b0b;color:#ddd;font:12px system-ui}.row{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin-bottom:4px}figure{margin:0}img{width:100%;display:block}figcaption{padding:2px 0}</style><div id="out"></div><script type="module">
-import {Renderer} from '../dist/src/engine/renderer.js';import {LOOKS} from '../dist/src/looks.js';import {bakeLook} from '../dist/src/color.js';
+<!doctype html><meta charset="utf-8"><title>EIGACAM looks proof</title><style>body{margin:0;padding:8px;background:#0b0b0b;color:#ddd;font:12px system-ui}.row{display:grid;grid-template-columns:repeat(var(--cols,10),1fr);gap:4px;margin-bottom:4px}figure{margin:0}img{width:100%;display:block}figcaption{padding:2px 0}</style><div id="out"></div><script type="module">
+import {Renderer} from '../dist/src/engine/renderer.js';import {LOOKS} from '../dist/src/looks.js';import {bakeLook} from '../dist/src/color.js';import {renderSettings} from '../dist/src/develop.js';
 const canvas=document.createElement('canvas'),r=new Renderer(canvas),out=document.getElementById('out');
-const names=(new URLSearchParams(location.search).get('img')||'street,bar,cafe,portrait').split(',');
+const q=new URLSearchParams(location.search),names=(q.get('img')||'street,bar,cafe,portrait').split(','),only=q.get('looks')?.split(',');
 const t0=performance.now();const luts=LOOKS.map(l=>bakeLook(l));const bakeMs=(performance.now()-t0)/LOOKS.length;
 for(const n of names){const im=new Image();im.src='../dist/assets/'+n+'.jpg';await im.decode();const row=document.createElement('div');row.className='row';out.append(row);
  const s=480/Math.max(im.naturalWidth,im.naturalHeight);r.setSource(im,im.naturalWidth,im.naturalHeight);r.resize(Math.round(im.naturalWidth*s),Math.round(im.naturalHeight*s));
- for(const [i,l] of [null,...LOOKS].entries()){r.setLUT(l?luts[i-1]:luts[0]);r.render(l?{sharpen:.35,strength:1,grain:l.grain.amount,grainSize:l.grain.size,halation:l.glow.halation,bloom:l.glow.bloom,glowHue:l.glow.hue,vignette:.12}:{strength:0});
+ for(const [i,l] of [null,...LOOKS].entries()){if(l&&only&&!only.includes(l.id))continue;r.setLUT(l?luts[i-1]:luts[0]);r.render(l?renderSettings(l,{ev:0,strength:100,grain:100,glow:100,sharpen:35,warmth:0}):{strength:0});
   const f=document.createElement('figure');const img=new Image();img.src=canvas.toDataURL();f.append(img);const c=document.createElement('figcaption');c.textContent=l?l.code+' '+l.name:'原圖';f.append(c);row.append(f);}}
 document.title='DONE bake '+bakeMs.toFixed(1)+'ms';
 </script>

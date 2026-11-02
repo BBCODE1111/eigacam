@@ -74,6 +74,19 @@ export const LOOKS = [
     mono: [.42, .5, .08],
     tone: { contrast: 1.35, pivot: .45, black: .012, white: .985, knee: .8 },
     grain: { amount: .09, size: 1.7 }, glow: { halation: 0, bloom: .05, hue: 0 }
+  },
+  {
+    id: 'neonrain', code: '09', name: '霓虹雨夜', en: 'NEON RAIN', swatch: ['#1a0f3a', '#2bb3c0', '#e04ac0'],
+    desc: '參考 Lightroom 賽博龐克調色：紫色陰影、洋紅高光、青藍霓虹，黃綠被壓掉。',
+    // Values copied from a shared Lightroom preset (slider ranges as in Lightroom).
+    lr: {
+      basic: {exposure: -.35, contrast: 42, highlights: -40, shadows: -25, whites: 20, blacks: -42, temp: -22, tint: 25, vibrance: 40, saturation: 8},
+      hsl: {red: [15, 55, 5], orange: [15, -25, 5], yellow: [-55, -45, -10], green: [55, -45, -20], aqua: [-25, 48, 8], blue: [-20, 40, -12], purple: [-25, 50, 5], magenta: [0, 0, 0]},
+      grading: {shadows: {hue: 285, sat: 35, lum: -10}, midtones: {hue: 290, sat: 25, lum: 0}, highlights: {hue: 320, sat: 45, lum: 8}, blending: 55, balance: -20},
+      dehaze: 15
+    },
+    detail: .17, vignette: .2, // texture +12 / clarity +22 → extra sharpening; vignette −20
+    grain: {amount: .015, size: 1.2}, glow: {halation: .3, bloom: .2, hue: 300}
   }
 ];
 

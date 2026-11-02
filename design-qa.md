@@ -15,7 +15,7 @@ Root causes found in v2:
 
 - `docs/camera-portrait.jpg`: 390×844 live view, 2.39 scope matte, after a shot, and the viewer.
 - `docs/camera-landscape.jpg`: 844×390 live view and viewer.
-- `docs/eight-looks.jpg`: the production renderer on four photos × eight looks.
+- `docs/looks.jpg`: the production renderer on four photos × nine looks.
 - 100% crops of full-resolution develops were compared with and without sharpening: crisper edges, no ringing, no banding in skies.
 - End-to-end in Chromium with a 1920×1440 fake camera: live preview, frame-line change, EV ruler drag, look swipe, shutter (button and Space key), develop to IndexedDB roll, roll grid, viewer, re-develop. Tested at 390×844, 844×390 and 1280×800 with no page overflow and no console errors.
 - 28 unit tests: look metadata, LUT range, tonal monotonicity, black and white points, neutral monochrome, tone-curve shoulder, colour-space round trips, .cube parsing and errors, crop geometry, dial mapping, camera stream ownership, resolution upgrade, zoom, still capture and share payloads.

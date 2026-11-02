@@ -4,10 +4,10 @@ import {LOOKS, findLook} from '../dist/src/looks.js';
 import {bakeLook, lookTransform, toneCurve, shaperEncode, shaperDecode, linearToOklab, oklabToLinear, parseCube, cropFor, outputSize, LUT_SIZE} from '../dist/src/color.js';
 import {renderSettings} from '../dist/src/develop.js';
 
-test('eight looks with unique ids, sequential codes and complete metadata', () => {
- assert.equal(LOOKS.length, 8);
- assert.equal(new Set(LOOKS.map(l => l.id)).size, 8);
- LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone); assert.ok(l.grain); assert.ok(l.glow);});
+test('nine looks with unique ids, sequential codes and complete metadata', () => {
+ assert.equal(LOOKS.length, 9);
+ assert.equal(new Set(LOOKS.map(l => l.id)).size, 9);
+ LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone || l.lr); assert.ok(l.grain); assert.ok(l.glow);});
  assert.equal(findLook('nightcity').name, '賽博夜城'); assert.equal(findLook('missing').id, 'print');
 });
 test('every baked LUT is finite, in range and the right size', () => {
@@ -50,4 +50,12 @@ test('cinema crops follow the photo orientation and never upscale', () => {
 test('dials map to renderer settings relative to each look', () => {
  const look = findLook('nightcity'), s = renderSettings(look, {ev: .5, strength: 50, grain: 200, glow: 0, sharpen: 35, warmth: -25});
  assert.equal(s.exposure, .5); assert.equal(s.strength, .5); assert.equal(s.grain, look.grain.amount * 2); assert.equal(s.halation, 0); assert.equal(s.bloom, 0); assert.equal(s.warmth, -.5); assert.equal(s.sharpen, .35);
+});
+test('Lightroom-style looks follow their slider values', async () => {
+ const {lightroomTransform} = await import('../dist/src/color.js');
+ const grey = [.18, .18, .18], plain = lightroomTransform(grey, {}); plain.forEach(v => assert.ok(Math.abs(v - .4614) < .01));
+ const warm = lightroomTransform(grey, {basic: {temp: 50}}); assert.ok(warm[0] > warm[2]);
+ const dark = lightroomTransform([.01, .01, .01], {basic: {blacks: -60}}); assert.ok(dark[0] < lightroomTransform([.01, .01, .01], {})[0]);
+ const desat = lightroomTransform([.4, .35, .02], {hsl: {yellow: [0, -100, 0], orange: [0, -100, 0]}}); assert.ok(Math.max(...desat) - Math.min(...desat) < .05);
+ const rain = findLook('neonrain'); const shadow = lookTransform([.02, .02, .02], rain); assert.ok(shadow[2] > shadow[1], 'purple shadows'); const hi = lookTransform([.7, .7, .7], rain); assert.ok(hi[0] > hi[1] && hi[2] > hi[1], 'magenta highlights');
 });
