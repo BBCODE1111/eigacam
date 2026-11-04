@@ -62,5 +62,17 @@ LOOKS.push(
  })
 );
 
+LOOKS.push({
+ id: 'transformer', code: '06', name: 'Transformer', en: 'TEAL · ORANGE', swatch: ['#0c2f36', '#2a9aa6', '#f0a24a'],
+ desc: '好萊塢大片的青橙對比：天空與陰影偏青藍，受光面、膚色和沙土偏暖橙金；中等對比，暗部留細節，高光不過曝。',
+ // Blues deepen toward teal, yellows lean orange, greens toward teal; shade goes teal while sunlit surfaces stay amber.
+ gain: [.84, .83, .8], sat: 1.08, desatHi: .06, desatSh: .04,
+ hues: [[29, 16, 10, 1.15, 0], [55, 20, 0, 1.35, .02], [80, 18, -10, 1.3, .02], [105, 22, -26, 1.05, 0], [142, 30, 48, .6, -.03], [195, 26, 8, 1.4, -.06], [235, 30, -16, 1.55, -.08], [262, 30, -28, 1.45, -.08], [328, 30, 0, .7, 0]],
+ shadows: [210, .05], highlights: [70, .012],
+ tone: {contrast: 1.28, pivot: .42, black: .01, white: .985, knee: .82},
+ print: [[0, 1, 1], [.004, 1, 1], [.01, 1, .99]],
+ vignette: .12,
+ grain: {amount: .022, size: 1.25}, glow: {halation: .12, bloom: .14, hue: 40}
+});
 
 export const findLook = id => LOOKS.find(l => l.id === id) ?? LOOKS[0];

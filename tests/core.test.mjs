@@ -5,7 +5,7 @@ import {bakeLook, lookTransform, toneCurve, shaperEncode, shaperDecode, linearTo
 import {renderSettings} from '../dist/src/develop.js';
 
 test('kept looks and Love Letter variants with unique ids, sequential codes and complete metadata', () => {
- assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library']);
+ assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library', 'transformer']);
  LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone || l.lr); assert.ok(l.grain); assert.ok(l.glow);});
  assert.equal(findLook('nightcity').name, '賽博夜城'); assert.equal(findLook('missing').id, 'nightcity'); assert.equal(findLook('loveletter').name, '情書');
 });
@@ -85,4 +85,10 @@ test('Love Letter keeps skin warm while greens stay muted', async () => {
 });
 test('variants reuse the base LUT and carry their masks', () => {
  const snow = findLook('loveletter-snow'); assert.equal(snow.lutOf, 'loveletter'); assert.ok(snow.masks.some(m => m.type === 'color')); assert.equal(findLook('loveletter').masks, undefined);
+});
+test('Transformer pulls blue sky toward teal and sunlit sand toward orange', () => {
+ const look = findLook('transformer'), lin = rgb => rgb.map(v => (v / 255) ** 2.2), hue = rgb => {const [, a, b] = linearToOklab(...lin(rgb.map(v => v * 255))); return (Math.atan2(b, a) * 180 / Math.PI + 360) % 360;};
+ const sky = lookTransform(lin([110, 150, 210]), look), sand = lookTransform(lin([200, 150, 100]), look);
+ assert.ok(hue(sky) > 195 && hue(sky) < 250, `sky hue ${hue(sky)}`); assert.ok(sky[2] > sky[0] && sky[1] > sky[0]);
+ assert.ok(sand[0] > sand[1] && sand[1] > sand[2] && hue(sand) > 40 && hue(sand) < 80, `sand hue ${hue(sand)}`);
 });

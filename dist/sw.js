@@ -1,4 +1,4 @@
-const CACHE='eigacam-camera-v14';
+const CACHE='eigacam-camera-v15';
 const ASSETS=["./", "./index.html", "./icon.svg", "./manifest.webmanifest", "./src/style.css", "./src/app.js", "./src/camera.js", "./src/color.js", "./src/looks.js", "./src/masks.js", "./src/develop.js", "./src/roll.js", "./src/files.js", "./src/photo-delivery.js", "./src/engine/renderer.js", "./src/engine/shaders.js", "./assets/icons/camera-rotate.svg", "./assets/icons/photo.svg", "./assets/icons/check.svg", "./assets/icons/LICENSE", "./assets/icon-192.png", "./assets/icon-512.png", "./presets/EIGACAM-Neon-Rain.xmp"];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>(k.startsWith('luma-studio-')||k.startsWith('eigacam-studio-')||k.startsWith('eigacam-camera-'))&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
