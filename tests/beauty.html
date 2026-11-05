@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>beauty</title><style>body{margin:0;background:#0b0b0b;color:#ddd;font:12px system-ui;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:4px}img{width:100%;display:block}figure{margin:0}</style><script type="module">
+import {Renderer} from '../dist/src/engine/renderer.js';import {bakeLook} from '../dist/src/color.js';import {findLook} from '../dist/src/looks.js';import {renderSettings} from '../dist/src/develop.js';
+const q=new URLSearchParams(location.search),img=q.get('img')||'portrait',crop=q.get('crop');
+const c=document.createElement('canvas'),r=new Renderer(c);const im=new Image();im.src='../dist/assets/'+img+'.jpg';await im.decode();
+r.setSource(im,im.naturalWidth,im.naturalHeight);const W=Number(q.get('w')||600);r.resize(W,Math.round(W*im.naturalHeight/im.naturalWidth));
+const cases=(q.get('cases')||'none:0,loveletter:0,loveletter:40,loveletter:80,loveletter-library:40,loveletter-snow:40,nightcity:40,neonrain:40').split(',');
+for(const cs of cases){const [id,b]=cs.split(':');const f=document.createElement('figure');
+ if(id==='none'){r.setLUT(bakeLook(findLook('loveletter')));r.render({strength:0});}else{const l=findLook(id);r.setLUT(bakeLook(findLook(l.lutOf??l.id)));r.render(renderSettings(l,{ev:0,strength:100,grain:100,glow:100,sharpen:35,warmth:0,beauty:Number(b)}));}
+ let url=c.toDataURL();if(crop){const [x,y,w]=crop.split(':').map(Number);const k=document.createElement('canvas');k.width=k.height=300;k.getContext('2d').drawImage(c,x*c.width,y*c.height,w*c.width,w*c.width,0,0,300,300);url=k.toDataURL();}
+ const i=new Image();i.src=url;f.append(i,document.createTextNode(id+' 美肌 '+b));document.body.append(f);}
+document.title='DONE';
+</script>

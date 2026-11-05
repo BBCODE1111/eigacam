@@ -21,7 +21,7 @@ export class Renderer {
     g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
     g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
     this.locations = new Map();
-    for (const [name, unit] of [['src', 0], ['nearTex', 1], ['farTex', 2], ['lut', 3]]) g.uniform1i(this.loc(name), unit);
+    for (const [name, unit] of [['src', 0], ['nearTex', 1], ['farTex', 2], ['lut', 3], ['baseTex', 4]]) g.uniform1i(this.loc(name), unit);
     this.sourceTexture = this.texture2D();
     this.lutTextures = new WeakMap();
     this.targets = null; this.width = 0; this.height = 0;
@@ -72,7 +72,7 @@ export class Renderer {
     // Glow buffers are small and resolution-independent: radii are fractions of the short edge.
     const near = Math.min(1, 720 / Math.max(width, height), .5), far = Math.min(1, 160 / Math.max(width, height));
     const size = s => [Math.max(1, Math.round(width * s)), Math.max(1, Math.round(height * s))];
-    this.targets = {nearA: this.target(...size(near)), nearB: this.target(...size(near)), farA: this.target(...size(far)), farB: this.target(...size(far))};
+    this.targets = {nearA: this.target(...size(near)), nearB: this.target(...size(near)), farA: this.target(...size(far)), farB: this.target(...size(far)), baseA: this.target(...size(far * 1.6)), baseB: this.target(...size(far * 1.6))};
   }
   pass(op, target, input) {
     const g = this.gl; g.uniform1i(this.loc('op'), op);
@@ -104,7 +104,11 @@ export class Renderer {
     g.uniform1f(this.loc('lutSize'), lut.size); g.uniform1f(this.loc('lutDisplay'), lut.input === 'display' ? 1 : 0);
     g.uniform3f(this.loc('domainMin'), ...(lut.domainMin ?? [0, 0, 0])); g.uniform3f(this.loc('domainMax'), ...(lut.domainMax ?? [1, 1, 1]));
     const glow = (s.halation ?? 0) + (s.bloom ?? 0) > 0;
-    for (const unit of [1, 2]) {g.activeTexture(g.TEXTURE0 + unit); g.bindTexture(g.TEXTURE_2D, null);} // no feedback loops
+    for (const unit of [1, 2, 4]) {g.activeTexture(g.TEXTURE0 + unit); g.bindTexture(g.TEXTURE_2D, null);} // no feedback loops
+    if ((s.clarity ?? 0) > 0) { // blurred scene for light emphasis
+      g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, this.sourceTexture);
+      g.uniform1f(this.loc('threshold'), -5); this.pass(1, T.baseA); this.blur(T.baseA, T.baseB, .035); g.uniform1f(this.loc('threshold'), .78);
+    }
     if (glow) {
       g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, this.sourceTexture);
       this.pass(1, T.nearA); this.blur(T.nearA, T.nearB, .007);
@@ -112,6 +116,8 @@ export class Renderer {
     }
     g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, T.nearA.tex);
     g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, T.farA.tex);
+    g.activeTexture(g.TEXTURE4); g.bindTexture(g.TEXTURE_2D, T.baseA.tex);
+    g.uniform1f(this.loc('beauty'), s.beauty ?? 0); g.uniform1f(this.loc('skinKeep'), s.skinKeep ?? 0); g.uniform1f(this.loc('clarity'), s.clarity ?? 0);
     g.uniform1f(this.loc('halation'), glow ? s.halation : 0); g.uniform1f(this.loc('bloom'), glow ? s.bloom : 0);
     g.uniform1f(this.loc('sharpen'), s.sharpen ?? 0); g.uniform1f(this.loc('strength'), s.strength ?? 1);
     g.uniform1f(this.loc('grainAmount'), s.grain ?? 0); g.uniform1f(this.loc('grainSize'), s.grainSize ?? 1.5);

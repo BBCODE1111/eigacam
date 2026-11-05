@@ -46,6 +46,7 @@ test('cinema crops follow the photo orientation and never upscale', () => {
 });
 test('dials map to renderer settings relative to each look', () => {
  const look = findLook('nightcity'), s = renderSettings(look, {ev: .5, strength: 50, grain: 200, glow: 0, sharpen: 35, warmth: -25});
+ assert.equal(s.beauty, .4, 'beauty defaults to 40 for older shots'); assert.equal(s.skinKeep, look.skin); assert.equal(renderSettings(look, {ev: 0, strength: 100, grain: 100, glow: 100, sharpen: 35, warmth: 0, beauty: 80}).beauty, .8);
  assert.equal(s.exposure, .5); assert.equal(s.strength, .5); assert.equal(s.grain, look.grain.amount * 2); assert.equal(s.halation, 0); assert.equal(s.bloom, 0); assert.equal(s.warmth, -.5); assert.equal(s.sharpen, .35);
 });
 test('Lightroom-style looks follow their slider values', async () => {

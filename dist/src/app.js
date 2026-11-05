@@ -20,6 +20,7 @@ const PARAMS = [
  {key: 'grain', code: 'GRAIN', label: '顆粒', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
  {key: 'glow', code: 'GLOW', label: '光暈', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
  {key: 'sharpen', code: 'SHARP', label: '銳利', min: 0, max: 100, step: 5, def: 35, fmt: v => String(v)},
+ {key: 'beauty', code: 'SKIN', label: '美肌', min: 0, max: 100, step: 5, def: 40, fmt: v => String(v)},
  {key: 'masks', code: 'MASK', label: '遮色片', type: 'masks'}
 ];
 const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];

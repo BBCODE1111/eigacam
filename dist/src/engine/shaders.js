@@ -10,7 +10,8 @@ precision highp int;
 precision highp sampler3D;
 in vec2 uv;out vec4 frag;
 uniform int op;
-uniform sampler2D src,nearTex,farTex;
+uniform sampler2D src,nearTex,farTex,baseTex;
+uniform float beauty,skinKeep,clarity;
 uniform sampler3D lut;
 uniform vec4 crop;          // x,y,w,h in image space (top-left origin)
 uniform float mirror;
@@ -48,6 +49,13 @@ vec3 adjust(vec3 c,float m,int i){
  return c;
 }
 vec3 scene(vec2 t){return decode(texture(src,t).rgb)*exposure*wb;}
+// Skin likelihood from the classic YCbCr skin cluster, softened so it fades rather than cuts.
+float skinMask(vec3 lin){
+ vec3 p=clamp(encode(lin),0.,1.)*255.;float y=dot(p,vec3(.299,.587,.114));
+ float cb=128.-.168736*p.r-.331264*p.g+.5*p.b,cr=128.+.5*p.r-.418688*p.g-.081312*p.b;
+ float e=length(vec2((cb-109.)/18.,(cr-152.)/16.));
+ return (1.-smoothstep(.65,1.2,e))*smoothstep(30.,70.,y)*(1.-smoothstep(240.,254.,y));
+}
 
 uint hashU(uvec2 q){uint n=q.x*1597334677u+q.y*3812015801u+2798796415u;n=(n^(n>>16u))*2246822519u;n=(n^(n>>13u))*3266489917u;return n^(n>>16u);}
 float hash(ivec2 p){return float(hashU(uvec2(p)))/4294967295.;}
@@ -68,16 +76,26 @@ void main(){
  if(op==2){vec3 sum=vec3(0.);float total=0.;for(int i=-6;i<=6;i++){float w=exp(-float(i*i)/18.);sum+=texture(src,uv+direction*float(i)/6.).rgb*w;total+=w;}frag=vec4(sum/total,1.);return;}
 
  vec2 t=sourceUV(uv);vec2 px=crop.zw/outSize;
- vec3 c=scene(t);
+ vec3 c=scene(t);float skin=skinMask(c);
+ // Beauty: edge-preserving smoothing on skin only. Eyes, brows, hair and frames differ in tone and are kept.
+ if(beauty>0.&&skin>.02){
+  float R=.0045*min(outSize.x,outSize.y);vec3 sum=c;float wsum=1.;float y0=sqrt(lum(c));
+  for(int i=0;i<12;i++){float a=float(i)*.5235988;for(int k=1;k<=2;k++){vec3 q=scene(t+vec2(cos(a),sin(a))*px*R*float(k)*.5);float w=exp(-pow(sqrt(lum(q))-y0,2.)/.0032)*skinMask(q);sum+=q*w;wsum+=w;}}
+  c=mix(c,sum/wsum,clamp(beauty*skin*.9,0.,1.));
+ }
  // Luminance-only unsharp mask on a one-pixel cross; soft-limited so edges never ring or halo.
  vec3 n=(scene(t+vec2(px.x,0.))+scene(t-vec2(px.x,0.))+scene(t+vec2(0.,px.y))+scene(t-vec2(0.,px.y)))*.25;
  float L=sqrt(max(lum(c),0.)),N=sqrt(max(lum(n),0.)),d=L-N;d=d/(1.+abs(d)*6.);
- float sharpL=max(L+sharpen*1.6*d,0.);c*=sharpL*sharpL/max(L*L,1e-6);
+ float sharpL=max(L+sharpen*(1.-.85*skin*min(beauty*2.,1.))*1.6*d,0.);c*=sharpL*sharpL/max(L*L,1e-6);
  vec2 img=imageCoord(uv);vec3 base=c;float shown=0.;
  for(int i=0;i<8;i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m,i);if(i==maskView-1)shown=m;}
+ // Light emphasis: large-scale dodge and burn against a blurred copy of the scene; gentler on faces.
+ if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}
  vec3 neutral=clamp(encode(c),0.,1.);
  vec3 glow=texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4);
  vec3 color=mix(neutral,lookup(c+glow),strength);
+ // Skin keeps its own clean, slightly rosy rendering; the grade only lends it some atmosphere.
+ if(skinKeep>0.&&skin>.02){vec3 nat=neutral*vec3(1.015,.99,.985);nat+=(1.-nat)*.05*beauty;nat=mix(vec3(lum(nat)),nat,.92);color=mix(color,mix(nat,color,.38),skin*skinKeep*strength);}
  vec2 q=uv-.5;q.x*=outSize.x/outSize.y;float r=length(q)/length(vec2(.5*outSize.x/outSize.y,.5));
  color*=1.-vignette*smoothstep(.35,1.05,r);
  if(grainAmount>0.){
@@ -85,7 +103,7 @@ void main(){
   vec2 o=vec2(250./(min(outSize.x,outSize.y)*grainSize));
   float gn=(grain(g+o)+grain(g-o)+grain(g+vec2(o.x,-o.y))+grain(g+vec2(-o.x,o.y)))*.25;
   float y=lum(color);float w=(.35+.65*pow(max(0.,1.-abs(y-.45)*1.8),.7))*smoothstep(0.,.1,y)*(1.-.7*smoothstep(.8,1.,y));
-  color+=gn*grainAmount*w;
+  color+=gn*grainAmount*w*(1.-.75*skin*min(beauty*2.,1.)); // keep beautified skin clean
  }
  if(maskView>0)color=mix(color,vec3(1.,.18,.28),shown*.55);
  color+=(hash(ivec2(gl_FragCoord.xy))-.5)/255.; // dither against banding in smooth skies

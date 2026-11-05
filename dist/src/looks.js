@@ -15,6 +15,7 @@ export const LOOKS = [
     shadows: [205, .03], highlights: [200, .004],
     tone: { contrast: 1.3, pivot: .47, black: .004, white: .985, knee: .8 },
     print: [[0, 1, 1], [0, 1, 1], [.008, .99, 1]],
+    skin: .5, clarity: .22,
     grain: { amount: .03, size: 1.3 }, glow: { halation: .3, bloom: .3, hue: 322, sat: .12 }
   },
   {
@@ -38,7 +39,8 @@ export const LOOKS = [
     // Skin, cheeks and lips are protected from the overall desaturation, the way film latitude kept faces warm.
     hues: [[18, 16, 2, 1.12, 0], [29, 20, 2, 1.1, 0], [48, 18, -2, 1.16, .01], [60, 16, -2, 1.08, .015], [105, 25, -6, .75, 0], [142, 30, -22, .6, 0], [195, 30, 0, .7, 0], [262, 30, 10, .85, .03], [328, 25, 0, .8, 0]],
     shadows: [62, .03], highlights: [350, .012],
-    tone: {contrast: .8, pivot: .42, black: .06, white: .995, knee: .72},
+    tone: {contrast: .94, pivot: .44, black: .035, white: .995, knee: .74},
+    skin: .7, clarity: .28, // portrait-first: clean rosy skin, light and shadow carry the mood
     print: [[.03, 1, 1], [.015, 1, .985], [0, 1, .985]],
     vignette: .06,
     grain: {amount: .05, size: 1.8}, glow: {halation: .15, bloom: .5, hue: 15}
@@ -64,7 +66,7 @@ LOOKS.push(
   shadows: [48, .035], highlights: [78, .03],
   tone: {contrast: 1.22, pivot: .5, black: .015, white: .975, knee: .72},
   print: [[.012, 1, 1], [.004, 1.04, .97], [0, 1.12, .86]],
-  vignette: .3,
+  vignette: .3, skin: .6, clarity: .38,
   masks: [createMask('luma', {name: '燈光暈', lo: 70, hi: 100, feather: 14, adj: {hue: 38, amount: 25}})],
   grain: {amount: .06, size: 1.8}, glow: {halation: .35, bloom: .35, hue: 30}
  }
