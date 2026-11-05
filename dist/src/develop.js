@@ -8,7 +8,7 @@ export function renderSettings(look, dials, extra = {}) {
  return {
   exposure: dials.ev, warmth: dials.warmth / 50, strength: dials.strength / 100, sharpen: Math.min(1, dials.sharpen / 100 + (look.detail ?? 0)),
   grain: (look.grain?.amount ?? 0) * dials.grain / 100, grainSize: look.grain?.size ?? 1.5,
-  halation: (look.glow?.halation ?? 0) * glow, bloom: (look.glow?.bloom ?? 0) * glow, glowHue: look.glow?.hue ?? 20,
+  halation: (look.glow?.halation ?? 0) * glow, bloom: (look.glow?.bloom ?? 0) * glow, glowHue: look.glow?.hue ?? 20, glowSat: look.glow?.sat ?? .55,
   vignette: look.vignette ?? .12, masks: look.masks ?? [], ...extra
  };
 }

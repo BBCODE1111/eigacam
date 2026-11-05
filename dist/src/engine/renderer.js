@@ -91,7 +91,7 @@ export class Renderer {
     if (this.lost || !this.sourceWidth || !this.lut) return;
     const g = this.gl, crop = s.crop ?? {x: 0, y: 0, w: 1, h: 1}, T = this.targets;
     const w = s.warmth ?? 0, gains = [Math.exp(.16 * w), 1, Math.exp(-.2 * w)], norm = .2126 * gains[0] + .7152 + .0722 * gains[2];
-    const hue = (s.glowHue ?? 20) / 60, k = n => {const v = (n + hue) % 6; return 1 - .55 * Math.max(0, Math.min(v, 4 - v, 1));};
+    const hue = (s.glowHue ?? 20) / 60, gs = s.glowSat ?? .55, k = n => {const v = (n + hue) % 6; return 1 - gs * Math.max(0, Math.min(v, 4 - v, 1));};
     const tint = [k(5), k(3), k(1)], tintL = .2126 * tint[0] + .7152 * tint[1] + .0722 * tint[2];
     g.uniform4f(this.loc('crop'), crop.x, crop.y, crop.w, crop.h);
     g.uniform1f(this.loc('mirror'), s.mirror ? 1 : 0);

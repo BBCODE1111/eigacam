@@ -56,6 +56,7 @@ export function lookTransform(rgb, look) {
       dh += w * shift; sm *= 1 + w * (sat - 1); dl += w * (light ?? 0);
     }
     h += dh; C *= sm * (look.sat ?? 1); L += dl * Math.min(1, C / .08);
+    if (look.neon) C *= 1 + look.neon * smooth(.09, .18, C); // emphasise already-vivid light sources
     C *= Math.max(0, 1 - (look.desatHi ?? 0) * smooth(.72, 1, L) - (look.desatSh ?? 0) * (1 - smooth(.08, .38, L)));
     A = C * Math.cos(h * Math.PI / 180); B = C * Math.sin(h * Math.PI / 180);
     const ws = (1 - smooth(.05, .62, L)), wh = smooth(.45, .98, L);

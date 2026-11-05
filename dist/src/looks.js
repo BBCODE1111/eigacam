@@ -8,13 +8,14 @@ import {createMask} from './masks.js';
 export const LOOKS = [
   {
     id: 'nightcity', code: '01', name: '賽博夜城', en: 'NEON CITY', swatch: ['#071a24', '#1fc2d6', '#ff3ea5'],
-    desc: '青藍暗部撞上洋紅霓虹，高飽和、深黑和光暈，未來城市的夜。',
-    gain: [1, .955, 1.05], sat: 1.22, desatHi: .12,
-    hues: [[29, 18, 6, 1.25, 0], [55, 18, -14, 1.15, 0], [105, 22, -4, 1.22, 0], [142, 30, 42, 1.05, 0], [195, 28, 0, 1.4, .02], [262, 28, 18, 1.25, .01], [328, 28, 0, 1.45, .02]],
-    shadows: [200, .05], highlights: [338, .022],
-    tone: { contrast: 1.34, pivot: .46, black: .004, white: .985, knee: .78 },
-    print: [[0, 1, 1], [0, 1.03, .985], [.01, .98, 1]],
-    grain: { amount: .03, size: 1.3 }, glow: { halation: .5, bloom: .3, hue: 322 }
+    desc: '城市的霓虹被放大：招牌、燈光的青、藍、洋紅更濃更亮，深黑帶一點青；人的膚色和白牆維持自然。',
+    // neon: boosts only colours that are already saturated (signs, lights), leaving skin and neutrals alone.
+    gain: [1, 1, 1.02], sat: 1, neon: .75, desatHi: .1,
+    hues: [[18, 14, 0, 1, 0], [29, 16, 0, 1.08, 0], [48, 18, 0, 1, .005], [60, 16, 0, 1, .005], [105, 22, -6, 1.1, 0], [142, 30, 40, 1.05, 0], [195, 28, 0, 1.35, .03], [262, 28, 16, 1.3, .02], [310, 24, 6, 1.4, .03], [338, 22, 0, 1.35, .02]],
+    shadows: [205, .03], highlights: [200, .004],
+    tone: { contrast: 1.3, pivot: .47, black: .004, white: .985, knee: .8 },
+    print: [[0, 1, 1], [0, 1, 1], [.008, .99, 1]],
+    grain: { amount: .03, size: 1.3 }, glow: { halation: .3, bloom: .3, hue: 322, sat: .12 }
   },
   {
     id: 'neonrain', code: '02', name: '霓虹雨夜', en: 'NEON RAIN', swatch: ['#1a0f3a', '#2bb3c0', '#e04ac0'],
@@ -54,12 +55,19 @@ LOOKS.push(
   masks: [full('冷藍空氣', {temp: -85, tint: 22, sat: -12, ev: .1}), createMask('luma', {name: '雪光', lo: 68, hi: 100, feather: 15, adj: {ev: .2, hue: 228, amount: 40}}), createMask('color', {name: '膚色保護', hue: 22, width: 36, feather: 22, adj: {temp: 70, tint: -18, sat: 12}})],
   glow: {halation: .05, bloom: .55, hue: 225}
  }),
- variant('loveletter', {
-  id: 'loveletter-library', code: '05', name: '情書・圖書館', en: 'LOVE LETTER · LIBRARY', swatch: ['#2a140b', '#a95f2c', '#f6c66b'],
-  desc: '夜裡的圖書館：鎢絲燈的琥珀橘、濃郁暖色，暗部沉下去，燈泡周圍暈開。',
-  masks: [full('鎢絲燈', {temp: 75, sat: 55, contrast: 15}), createMask('luma', {name: '燈光暈', lo: 60, hi: 100, feather: 15, adj: {ev: .15, hue: 32, amount: 45}}), createMask('luma', {name: '暗部沉', lo: 0, hi: 25, feather: 12, adj: {ev: -.45, contrast: 25}})],
-  glow: {halation: .3, bloom: .4, hue: 30}
- })
+ {
+  id: 'loveletter-library', code: '05', name: '情書・圖書館', en: 'LOVE LETTER · LIBRARY', swatch: ['#1e0f08', '#a9622f', '#f6cf6e'],
+  desc: '夜裡的圖書館：鎢絲燈的琥珀與金黃，深褐近黑的暗部，冷色退成灰；臉保有暖紅的血色。',
+  // Tuned to film frames: shadows ≈ rgb(49,26,19), mids ≈ rgb(169,104,62), lamp highlights ≈ rgb(254,213,80).
+  gain: [1.2, .93, .7], sat: .95, desatHi: .1, desatSh: .25,
+  hues: [[18, 14, 2, .9, 0], [29, 18, 2, .92, 0], [48, 18, -2, .78, .015], [62, 16, -2, .8, .01], [80, 18, -6, 1.1, 0], [105, 22, -18, 1.05, 0], [142, 30, -40, .45, -.02], [195, 30, 0, .45, 0], [262, 30, -20, .5, 0]],
+  shadows: [48, .035], highlights: [78, .03],
+  tone: {contrast: 1.22, pivot: .5, black: .015, white: .975, knee: .72},
+  print: [[.012, 1, 1], [.004, 1.04, .97], [0, 1.12, .86]],
+  vignette: .3,
+  masks: [createMask('luma', {name: '燈光暈', lo: 70, hi: 100, feather: 14, adj: {hue: 38, amount: 25}})],
+  grain: {amount: .06, size: 1.8}, glow: {halation: .35, bloom: .35, hue: 30}
+ }
 );
 
 LOOKS.push({

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {LOOKS, findLook} from '../dist/src/looks.js';
 import {bakeLook, lookTransform, toneCurve, shaperEncode, shaperDecode, linearToOklab, oklabToLinear, parseCube, cropFor, outputSize, LUT_SIZE} from '../dist/src/color.js';
 import {renderSettings} from '../dist/src/develop.js';
+import {toLinear as toLinearT} from '../dist/src/color.js';
 
 test('kept looks and Love Letter variants with unique ids, sequential codes and complete metadata', () => {
  assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library', 'transformer']);
@@ -17,7 +18,7 @@ test('looks never invert tones: brighter grey in, brighter out', () => {
  for (const l of LOOKS) {let prev = -1; for (let i = 0; i <= 60; i++) {const x = shaperDecode(i / 60), [r, g, b] = lookTransform([x, x, x], l), y = .2126 * r + .7152 * g + .0722 * b; assert.ok(y >= prev - 1e-6, `${l.id} at ${x}`); prev = y;}}
 });
 test('looks keep black near black and white near white', () => {
- for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .12, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .85, l.id); assert.ok(Math.min(...white) > .8, l.id);}
+ for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .12, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .85, l.id); assert.ok(Math.min(...white) > .65, l.id);} // tungsten looks keep golden whites
 });
 test('tone curve is monotonic with a soft shoulder above white', () => {
  const t = {contrast: 1.3, pivot: .45, black: .02, white: .98, knee: .8}; let prev = -1;
@@ -91,4 +92,14 @@ test('Transformer pulls blue sky toward teal and sunlit sand toward orange', () 
  const sky = lookTransform(lin([110, 150, 210]), look), sand = lookTransform(lin([200, 150, 100]), look);
  assert.ok(hue(sky) > 195 && hue(sky) < 250, `sky hue ${hue(sky)}`); assert.ok(sky[2] > sky[0] && sky[1] > sky[0]);
  assert.ok(sand[0] > sand[1] && sand[1] > sand[2] && hue(sand) > 40 && hue(sand) < 80, `sand hue ${hue(sand)}`);
+});
+test('Neon City emphasises neon colours without tinting skin or white walls', () => {
+ const look = findLook('nightcity'), lin = c => c.map(v => toLinearT(v / 255));
+ for (const neutral of [[225, 222, 220], [118, 118, 118]]) {const o = lookTransform(lin(neutral), look); assert.ok(Math.max(...o) - Math.min(...o) < .03, String(neutral));}
+ const skin = lookTransform(lin([224, 172, 150]), look); assert.ok(skin[0] > skin[1] && skin[1] > skin[2] && skin[0] - skin[2] < .4, 'skin stays a natural warm tone');
+});
+test('Library is its own dark tungsten look', () => {
+ const look = findLook('loveletter-library'); assert.equal(look.lutOf, undefined);
+ const mid = lookTransform([.18, .18, .18], look); assert.ok(mid[0] > mid[1] && mid[1] > mid[2], 'amber midtones');
+ assert.ok(Math.max(...lookTransform([.012, .012, .012], look)) < .2, 'near-black shadows');
 });
