@@ -78,15 +78,15 @@ test('only enabled, non-neutral masks are packed for the shader', () => {
  const viewed = packMasks([a, b, c, d], b.id); assert.equal(viewed.count, 3); assert.equal(viewed.view, 2);
  const off = packMasks([c], c.id); assert.equal(off.count, 1); assert.equal(off.c[0], 0, 'disabled mask is visible but has no effect');
 });
-test('Love Letter keeps skin warm while greens stay muted', async () => {
+test('Love Letter keeps skin warm and colours clear', async () => {
  const {toLinear, linearToOklab} = await import('../dist/src/color.js');
  const chroma = rgb => {const [, a, b] = linearToOklab(...rgb.map(v => toLinear(v / 255))); return Math.hypot(a, b);};
  const look = findLook('loveletter'), through = rgb => lookTransform(rgb.map(v => toLinear(v / 255)), look).map(v => v * 255);
  for (const skin of [[224, 172, 150], [190, 130, 105], [120, 75, 60]]) assert.ok(chroma(through(skin)) > chroma(skin) * .85, String(skin));
- assert.ok(chroma(through([60, 110, 50])) < chroma([60, 110, 50]) * .5);
+ assert.ok(chroma(through([60, 110, 50])) > chroma([60, 110, 50]) * .6, 'greens stay clear, not drained');
 });
-test('variants reuse the base LUT and carry their masks', () => {
- const snow = findLook('loveletter-snow'); assert.equal(snow.lutOf, 'loveletter'); assert.ok(snow.masks.some(m => m.type === 'color')); assert.equal(findLook('loveletter').masks, undefined);
+test('Snow keeps the hazy base and carries its masks', () => {
+ const snow = findLook('loveletter-snow'); assert.equal(snow.lutOf, undefined, 'Snow keeps its own hazy base'); assert.ok(snow.masks.some(m => m.type === 'color')); assert.ok(snow.tone.black > findLook('loveletter').tone.black);
 });
 test('Transformer pulls blue sky toward teal and sunlit sand toward orange', () => {
  const look = findLook('transformer'), lin = rgb => rgb.map(v => (v / 255) ** 2.2), hue = rgb => {const [, a, b] = linearToOklab(...lin(rgb.map(v => v * 255))); return (Math.atan2(b, a) * 180 / Math.PI + 360) % 360;};

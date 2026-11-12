@@ -8,15 +8,15 @@ import {createMask} from './masks.js';
 export const LOOKS = [
   {
     id: 'nightcity', code: '01', name: '賽博夜城', en: 'NEON CITY', swatch: ['#071a24', '#1fc2d6', '#ff3ea5'],
-    desc: '城市的霓虹被放大：招牌、燈光的青、藍、洋紅更濃更亮，深黑帶一點青；人的膚色和白牆維持自然。',
-    // neon: boosts only colours that are already saturated (signs, lights), leaving skin and neutrals alone.
-    gain: [1, 1, 1.02], sat: 1, neon: .75, desatHi: .1,
-    hues: [[18, 14, 0, 1, 0], [29, 16, 0, 1.08, 0], [48, 18, 0, 1, .005], [60, 16, 0, 1, .005], [105, 22, -6, 1.1, 0], [142, 30, 40, 1.05, 0], [195, 28, 0, 1.35, .03], [262, 28, 16, 1.3, .02], [310, 24, 6, 1.4, .03], [338, 22, 0, 1.35, .02]],
-    shadows: [205, .03], highlights: [200, .004],
-    tone: { contrast: 1.3, pivot: .47, black: .004, white: .985, knee: .8 },
-    print: [[0, 1, 1], [0, 1, 1], [.008, .99, 1]],
-    skin: .5, clarity: .22,
-    grain: { amount: .03, size: 1.3 }, glow: { halation: .3, bloom: .3, hue: 322, sat: .12 }
+    desc: '霓虹被放到最大：招牌、燈光的青、藍、洋紅又濃又亮還會暈開，夜色沉成帶青的深黑；人的膚色維持正常。',
+    // neon: boosts only colours that are already saturated (signs, lights). Skin is rendered separately (skin).
+    gain: [1, 1, 1.03], sat: 1.04, neon: 1.5, desatHi: .04,
+    hues: [[18, 14, 0, 1, 0], [29, 16, -2, 1.2, 0], [48, 18, 0, 1, .005], [60, 16, 0, 1, .005], [105, 22, -8, 1.15, 0], [142, 30, 44, 1.2, .01], [195, 28, -4, 1.6, .04], [262, 28, 14, 1.55, .03], [310, 24, 6, 1.65, .04], [338, 22, 0, 1.5, .03]],
+    shadows: [208, .045], highlights: [200, .004],
+    tone: { contrast: 1.38, pivot: .48, black: .002, white: .99, knee: .8 },
+    print: [[0, 1, 1], [0, 1, 1], [.01, .98, 1]],
+    skin: .85, clarity: .3, vignette: .22,
+    grain: { amount: .03, size: 1.3 }, glow: { halation: .6, bloom: .6, hue: 322, sat: .1 }
   },
   {
     id: 'neonrain', code: '02', name: '霓虹雨夜', en: 'NEON RAIN', swatch: ['#1a0f3a', '#2bb3c0', '#e04ac0'],
@@ -32,8 +32,21 @@ export const LOOKS = [
     grain: {amount: .015, size: 1.2}, glow: {halation: .3, bloom: .2, hue: 300}
   },
   {
-    id: 'loveletter', code: '03', name: '情書', en: 'LOVE LETTER', swatch: ['#3a2e24', '#c9b29c', '#f6eaec'],
-    desc: '岩井俊二式的柔光：暖米色中間調、褐色微亮的黑、帶粉紫的白，低飽和、濛濛的光暈；冷景會偏向淡藍紫。',
+    id: 'loveletter', code: '03', name: '情書', en: 'LOVE LETTER', swatch: ['#5b6f7a', '#cfe3df', '#fff7ee'],
+    desc: '日系的清亮：畫面偏亮、空氣透明，白是乾淨的奶白，綠與藍清爽，暗部帶一點青；膚色明亮紅潤，光是柔的。',
+    // Bright and clear rather than drained: colour stays, contrast is gentle, whites are clean.
+    gain: [1.27, 1.28, 1.29], sat: 1, desatHi: .12,
+    hues: [[18, 16, 2, 1.05, .005], [29, 20, 2, 1, .005], [48, 18, -2, 1.06, .02], [60, 16, -2, 1.02, .02], [105, 25, 4, .92, .02], [142, 30, 14, .95, .035], [195, 30, -4, 1.08, .03], [262, 30, -14, 1.02, .045], [328, 25, 0, .95, .01]],
+    shadows: [215, .02], highlights: [82, .008],
+    tone: {contrast: .95, pivot: .4, black: .034, white: 1, knee: .8},
+    skin: .75, clarity: .22,
+    vignette: .04,
+    grain: {amount: .035, size: 1.6}, glow: {halation: .1, bloom: .42, hue: 30}
+  }
+];
+
+// The hazy, warm base tuned to film frames. Snow keeps it; it is not listed on its own.
+const HAZE = {
     // Tuned against frames from the film: shadows ≈ rgb(50,40,30), mids ≈ rgb(135,115,100), whites ≈ rgb(247,234,237).
     gain: [1.24, 1.15, 1.03], sat: .72, desatHi: .18, desatSh: .12,
     // Skin, cheeks and lips are protected from the overall desaturation, the way film latitude kept faces warm.
@@ -44,30 +57,29 @@ export const LOOKS = [
     print: [[.03, 1, 1], [.015, 1, .985], [0, 1, .985]],
     vignette: .06,
     grain: {amount: .05, size: 1.8}, glow: {halation: .15, bloom: .5, hue: 15}
-  }
-];
+  };
 
 // Variants share a base look's colour science (its LUT) and add masks on top.
 const variant = (baseId, extra) => {const base = LOOKS.find(l => l.id === baseId); return {...base, lutOf: baseId, ...extra, masks: extra.masks ?? []};};
 const full = (name, adj) => createMask('luma', {name, lo: 0, hi: 100, adj});
 LOOKS.push(
- variant('loveletter', {
+ {...HAZE,
   id: 'loveletter-snow', code: '04', name: '情書・雪', en: 'LOVE LETTER · SNOW', swatch: ['#3b3f63', '#8f9bd0', '#eef0fa'],
   desc: '「お元気ですか」的雪地：淡藍紫的冷光、柔白雪色，膚色仍留一點溫度。',
   masks: [full('冷藍空氣', {temp: -85, tint: 22, sat: -12, ev: .1}), createMask('luma', {name: '雪光', lo: 68, hi: 100, feather: 15, adj: {ev: .2, hue: 228, amount: 40}}), createMask('color', {name: '膚色保護', hue: 22, width: 36, feather: 22, adj: {temp: 70, tint: -18, sat: 12}})],
   glow: {halation: .05, bloom: .55, hue: 225}
- }),
+ },
  {
-  id: 'loveletter-library', code: '05', name: '情書・圖書館', en: 'LOVE LETTER · LIBRARY', swatch: ['#1e0f08', '#a9622f', '#f6cf6e'],
-  desc: '夜裡的圖書館：鎢絲燈的琥珀與金黃，深褐近黑的暗部，冷色退成灰；臉保有暖紅的血色。',
-  // Tuned to film frames: shadows ≈ rgb(49,26,19), mids ≈ rgb(169,104,62), lamp highlights ≈ rgb(254,213,80).
-  gain: [1.2, .93, .7], sat: .95, desatHi: .1, desatSh: .25,
-  hues: [[18, 14, 2, .9, 0], [29, 18, 2, .92, 0], [48, 18, -2, .78, .015], [62, 16, -2, .8, .01], [80, 18, -6, 1.1, 0], [105, 22, -18, 1.05, 0], [142, 30, -40, .45, -.02], [195, 30, 0, .45, 0], [262, 30, -20, .5, 0]],
-  shadows: [48, .035], highlights: [78, .03],
-  tone: {contrast: 1.22, pivot: .5, black: .015, white: .975, knee: .72},
-  print: [[.012, 1, 1], [.004, 1.04, .97], [0, 1.12, .86]],
-  vignette: .3, skin: .6, clarity: .38,
-  masks: [createMask('luma', {name: '燈光暈', lo: 70, hi: 100, feather: 14, adj: {hue: 38, amount: 25}})],
+  id: 'loveletter-library', code: '05', name: '情書・圖書館', en: 'LOVE LETTER · LIBRARY', swatch: ['#3a2212', '#c98a4a', '#ffe3a3'],
+  desc: '傍晚的圖書館：鎢絲燈的暖金色包住整個畫面，顏色還在、不混濁，暗部是溫暖的深褐；臉透著暖光。',
+  // Warm, but clear: colours keep their identity under the amber light instead of collapsing to brown.
+  gain: [1.13, 1, .8], sat: 1.04, desatHi: .08, desatSh: .1,
+  hues: [[18, 14, 2, 1, 0], [29, 18, 2, 1.04, 0], [48, 18, -2, .96, .015], [62, 16, -2, .96, .015], [80, 18, -4, 1.08, .01], [105, 22, -10, 1, 0], [142, 30, -18, .8, 0], [195, 30, 0, .8, 0], [262, 30, -10, .82, 0]],
+  shadows: [45, .022], highlights: [80, .02],
+  tone: {contrast: 1.1, pivot: .45, black: .018, white: .985, knee: .76},
+  print: [[.008, 1, 1], [.003, 1.01, .99], [0, 1.05, .93]],
+  vignette: .2, skin: .6, clarity: .3,
+  masks: [createMask('luma', {name: '燈光暈', lo: 72, hi: 100, feather: 14, adj: {hue: 40, amount: 18}})],
   grain: {amount: .06, size: 1.8}, glow: {halation: .35, bloom: .35, hue: 30}
  }
 );

@@ -37,6 +37,8 @@ export class CameraSession {
  }
  zoomRange() {try {const z = this.track?.getCapabilities?.().zoom; return z && z.max > z.min ? {min: z.min, max: z.max, value: this.track.getSettings().zoom ?? z.min} : null;} catch {return null;}}
  async setZoom(value) {const r = this.zoomRange(); if (!r) return; await this.track.applyConstraints({advanced: [{zoom: Math.min(r.max, Math.max(r.min, value))}]});}
+ // Tap to focus and meter: honoured by cameras that expose points of interest, ignored elsewhere.
+ async focusAt(x, y) {try {const caps = this.track?.getCapabilities?.(); if (!caps?.focusMode && !caps?.exposureMode) return false; await this.track.applyConstraints({advanced: [{pointsOfInterest: [{x, y}], ...(caps.focusMode?.includes('single-shot') ? {focusMode: 'single-shot'} : {}), ...(caps.exposureMode?.includes('single-shot') ? {exposureMode: 'single-shot'} : {})}]}); return true;} catch {return false;}}
  async takePhoto(ImageCaptureType = globalThis.ImageCapture) {
   const token = this.generation, track = this.track;
   if (!track || typeof ImageCaptureType !== 'function') return null;

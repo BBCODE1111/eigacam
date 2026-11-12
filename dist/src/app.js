@@ -24,10 +24,12 @@ const PARAMS = [
  {key: 'masks', code: 'MASK', label: '遮色片', type: 'masks'}
 ];
 const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];
-const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ...PARAMS.map(p => [p.key, p.def])]);
+const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ['grid', false], ...PARAMS.map(p => [p.key, p.def])]);
 const store = {get(k) {try {return JSON.parse(localStorage.getItem(k));} catch {return null;}}, set(k, v) {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}};
 const prefs = {...defaults, ...(store.get('eigacam.prefs') ?? {})};
-const savePrefs = () => store.set('eigacam.prefs', prefs);
+let saveTimer; // debounced: dragging a dial must not write storage on every move
+const savePrefs = () => {clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set('eigacam.prefs', prefs), 250);};
+addEventListener('pagehide', () => store.set('eigacam.prefs', prefs));
 const dials = () => Object.fromEntries(PARAMS.filter(p => !p.type).map(p => [p.key, prefs[p.key]]));
 
 // ---------- looks & LUTs ----------
@@ -70,9 +72,9 @@ function layout() {
  const aspect = ASPECTS.find(a => a.value === prefs.ratio) ?? ASPECTS[0];
  const out = outputSize(src.width, src.height, crop, 8192, 40_000_000);
  $('frameLabel').textContent = live ? `${aspect.code} ${prefs.ratio ? aspect.label + ':1' : ''} · ${out.width}×${out.height}`.replace('16:9:1', '16:9') : '';
- $('matte').classList.toggle('full', !prefs.ratio);
+ $('matte').classList.toggle('full', !prefs.ratio); $('window').classList.toggle('grid', !!prefs.grid);
  if (preview && (live || still)) {
-  const dpr = Math.min(devicePixelRatio || 1, 3), size = fitInside(Math.round(w * dpr), Math.round(h * dpr), 1600);
+  const dpr = Math.min(devicePixelRatio || 1, 3), size = fitInside(Math.round(w * dpr), Math.round(h * dpr), Math.round((live ? 1280 : 1600) * quality.scale));
   const fit = fitInside(src.width, src.height, Math.max(size.width, size.height));
   try {preview.resize(fit.width, fit.height);} catch (e) {toast(e.message);}
  }
@@ -86,12 +88,20 @@ function drawPreview() {
  if (!preview) return;
  if (live) {if (video.readyState < 2) return; preview.setSource(video);} else if (!still) return;
  const look = lookById(prefs.look); preview.setLUT(lutFor(look.id));
- preview.render(renderSettings(look, dials(), {mirror: live && camera.facing === 'user', masks: activeMasks(), maskView: studio?.show ? studio.selected : 0, grainSeed: live ? [Math.random() * 999, Math.random() * 999] : [0, 0]}));
+ preview.render(renderSettings(look, dials(), {mirror: live && camera.facing === 'user', masks: activeMasks(), maskView: studio?.show ? studio.selected : 0, grainSeed: live ? [Math.random() * 999, Math.random() * 999] : [0, 0], taps: live ? 6 : 12}));
 }
 let drawQueued = false;
 function requestDraw() {if (live || drawQueued) return; drawQueued = true; requestAnimationFrame(() => {drawQueued = false; try {drawPreview();} catch (e) {toast(e.message);}});}
+// Keeps the viewfinder fluid: when frames arrive slower than ~20 fps, render the preview smaller.
+const quality = {scale: 1, last: 0, slow: 0};
 function loop() {
  if (!live) return;
+ const now = performance.now();
+ if (quality.last && !document.hidden) {
+  quality.slow = now - quality.last > 52 ? quality.slow + 1 : Math.max(0, quality.slow - .5);
+  if (quality.slow > 24 && quality.scale > .5) {quality.scale = Math.max(.5, quality.scale - .17); quality.slow = 0; layout();}
+ }
+ quality.last = now;
  try {drawPreview();} catch (e) {stopCamera(); toast(e.message); return;}
  frameHandle = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(loop) : requestAnimationFrame(loop);
 }
@@ -100,7 +110,8 @@ function loop() {
 function setState(name) {$('hudState').textContent = name; $('app').dataset.state = name.toLowerCase();}
 function updateControls() {
  $('flip').disabled = !live; $('vfIdle').hidden = live || pending || !!still; $('frame').hidden = !live && !still;
- $('hudRes').textContent = live ? `${video.videoWidth}×${video.videoHeight}` : '— × —';
+ $('hudRes').textContent = live ? `${video.videoWidth}×${video.videoHeight}` : '';
+ $('gridToggle').setAttribute('aria-pressed', !!prefs.grid);
  $('hqToggle').setAttribute('aria-pressed', prefs.hq); $('app').classList.toggle('hq', prefs.hq);
  $('shutter').setAttribute('aria-label', prefs.hq ? '用 HQ 系統相機拍攝' : live ? '拍攝' : '開啟相機');
  setState(pending ? 'WAIT' : live ? 'LIVE' : 'STBY');
@@ -194,10 +205,10 @@ $('photoInput').addEventListener('change', e => {importFiles(e.target.files, '�
 
 // ---------- look reel ----------
 let flashTimer;
-function selectLook(id, announce = true) {
+function selectLook(id, announce = true, scroll = true) {
  prefs.look = id; savePrefs(); const look = lookById(id); syncParams?.();
  $('hudLook').textContent = `${look.code} ${look.en}`;
- document.querySelectorAll('#reel .look').forEach(b => {const on = b.dataset.look === id; b.classList.toggle('active', on); b.setAttribute('aria-selected', on); if (on) b.scrollIntoView({inline: 'center', block: 'nearest', behavior: 'smooth'});});
+ document.querySelectorAll('#reel .look').forEach(b => {const on = b.dataset.look === id; b.classList.toggle('active', on); b.setAttribute('aria-selected', on); if (on && scroll) b.scrollIntoView({inline: 'center', block: 'nearest', behavior: 'smooth'});});
  if (announce && live) {const f = $('lookFlash'); f.innerHTML = `<b>${look.code}</b><strong>${look.name}</strong><span>${look.en}</span>`; f.classList.add('on'); clearTimeout(flashTimer); flashTimer = setTimeout(() => f.classList.remove('on'), 1100);}
  if (!live) requestDraw();
 }
@@ -220,15 +231,42 @@ $('cubeInput').addEventListener('change', guard(async e => {
  try {localStorage.setItem('eigacam.cube', text);} catch {toast('LUT 太大，無法記住，重新整理後需再匯入');}
  buildReel(); selectLook('custom'); toast('已載入 LUT：' + custom.look.en);
 }));
-// Swipe across the viewfinder to change looks, like changing film stock.
-let swipe = null;
-$('viewfinder').addEventListener('pointerdown', e => {if (studio || e.target.closest('button, .handle')) return; swipe = {x: e.clientX, y: e.clientY};});
-$('viewfinder').addEventListener('pointerup', e => {
- if (!swipe) return; const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null;
- if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
- const list = allLooks(), i = list.findIndex(l => l.id === prefs.look);
- selectLook(list[(i + (dx < 0 ? 1 : -1) + list.length) % list.length].id);
+// Turning the look wheel selects whatever stops under the centre, like a lens ring with click stops.
+let reelTimer;
+$('reel').addEventListener('scroll', () => {
+ clearTimeout(reelTimer); reelTimer = setTimeout(() => {
+  const reel = $('reel'); if (reel.hidden) return; const r = reel.getBoundingClientRect(), mid = r.left + r.width / 2; let best = null, dist = 1e9;
+  reel.querySelectorAll('.look[data-look]').forEach(b => {const q = b.getBoundingClientRect(), d = Math.abs(q.left + q.width / 2 - mid); if (d < dist) {dist = d; best = b;}});
+  if (best && dist < 70 && best.dataset.look !== prefs.look) {selectLook(best.dataset.look, true, false); navigator.vibrate?.(5);}
+ }, 110);
+}, {passive: true});
+
+// Viewfinder gestures: swipe sideways to change look, drag up or down for exposure, tap to focus.
+function setEV(v, active = true) {
+ v = Math.round(Math.min(2, Math.max(-2, v)) * 10) / 10; const changed = v !== prefs.ev;
+ if (changed) {prefs.ev = v; savePrefs(); syncParams(); mainDial.draw(); requestDraw(); if (v === 0) navigator.vibrate?.(6);}
+ const m = $('evMeter'); m.classList.toggle('on', active); m.classList.toggle('set', v !== 0);
+ m.firstElementChild.style.top = m.lastElementChild.style.top = 50 - v * 25 + '%'; m.lastElementChild.textContent = PARAMS[0].fmt(v) + ' EV';
+}
+let gesture = null, evTimer;
+const vf = $('viewfinder');
+vf.addEventListener('pointerdown', e => {if (studio || e.target.closest('button, .handle')) return; gesture = {x: e.clientX, y: e.clientY, ev: prefs.ev, mode: ''}; vf.setPointerCapture(e.pointerId);});
+vf.addEventListener('pointermove', e => {
+ if (!gesture) return; const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+ if (!gesture.mode) {if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.4 && (live || still)) gesture.mode = 'ev'; else if (Math.abs(dx) > 16) gesture.mode = 'swipe';}
+ if (gesture.mode === 'ev') {clearTimeout(evTimer); setEV(gesture.ev - dy / 150);}
 });
+vf.addEventListener('pointerup', e => {
+ if (!gesture) return; const g = gesture, dx = e.clientX - g.x; gesture = null;
+ if (g.mode === 'ev') {evTimer = setTimeout(() => setEV(prefs.ev, false), 900); return;}
+ if (g.mode === 'swipe' && Math.abs(dx) > 50) {const list = allLooks(), i = list.findIndex(l => l.id === prefs.look); selectLook(list[(i + (dx < 0 ? 1 : -1) + list.length) % list.length].id); return;}
+ if (!g.mode && live) { // tap: focus reticle, and real focus where the camera supports it
+  const f = $('frame').getBoundingClientRect(), x = (e.clientX - f.left) / f.width, y = (e.clientY - f.top) / f.height; if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  const r = $('reticle'); r.style.left = x * 100 + '%'; r.style.top = y * 100 + '%'; r.classList.remove('on'); void r.offsetWidth; r.classList.add('on');
+  camera.focusAt(camera.facing === 'user' ? 1 - x : x, y); navigator.vibrate?.(4);
+ }
+});
+vf.addEventListener('pointercancel', () => {gesture = null;});
 
 // ---------- parameter strip, ruler dial, aspect picker ----------
 let activeParam = '';
@@ -248,7 +286,7 @@ function openParam(key) {
  if (p?.type === 'masks') {openStudio(); return;}
  activeParam = key;
  $('reel').hidden = !!key; $('aspects').hidden = p?.type !== 'aspect';
- mainDial.show(p && !p.type ? {...p, label: `${p.label} · ${p.code}`, get: () => prefs[p.key], set: v => {prefs[p.key] = v; savePrefs(); syncParams(); requestDraw();}} : null);
+ mainDial.show(p && !p.type ? {...p, label: `${p.label} · ${p.code}`, get: () => prefs[p.key], set: v => {prefs[p.key] = v; savePrefs(); syncParams(); requestDraw(); if (p.key === 'ev') setEV(v, false);}} : null);
  if (p?.type === 'aspect') buildAspects();
  if (!key) selectLook(prefs.look, false);
  syncParams();
@@ -523,11 +561,13 @@ $('idleHQ').onclick = nativeCapture; $('idleImport').onclick = () => $('photoInp
 $('flip').onclick = () => startCamera(camera.facing === 'user' ? 'environment' : 'user');
 $('hqToggle').onclick = () => {prefs.hq = !prefs.hq; savePrefs(); updateControls(); toast(prefs.hq ? 'HQ 開啟：快門會打開系統相機，用最高畫質拍，回來自動沖印' : 'HQ 關閉：直接用取景畫面拍攝');};
 $('hudLook').onclick = () => openParam('');
+$('dialClose').onclick = () => openParam('');
+$('gridToggle').onclick = () => {prefs.grid = !prefs.grid; savePrefs(); updateControls(); layout();};
 document.addEventListener('keydown', e => {if (e.target.closest('input, [role=slider]')) return; if (e.code === 'Space' || e.key === 'Enter' && e.target === document.body) {e.preventDefault(); shoot();} if (e.key === 'Escape') {if (studio) closeStudio(); else if (!$('viewer').hidden) $('viewerBack').click(); else if (!$('roll').hidden) closeSheet('roll'); else openParam('');}});
 document.addEventListener('visibilitychange', () => {if (document.hidden && (live || pending)) {stopCamera(); resumeAfterNative = resumeAfterNative || 'visibility';} else if (!document.hidden && resumeAfterNative === 'visibility') {resumeAfterNative = false; startCamera();}});
 window.addEventListener('pagehide', () => camera.stop());
 
-buildParams(); buildReel(); updateControls(); layout();
+buildParams(); buildReel(); updateControls(); layout(); setEV(prefs.ev, false);
 shots().then(list => {setRollThumb(list[0]?.thumb); refreshRollCount();});
 persist();
 // Re-open the camera automatically when permission was already granted.

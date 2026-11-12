@@ -2,17 +2,18 @@
 <html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#050505"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="description" content="電影調色相機：即時取景、電影色彩、寬銀幕畫幅，拍下就沖印。"><title>EIGACAM — 一拍入戲</title><link rel="icon" href="./icon.svg"><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./assets/icon-192.png"><link rel="stylesheet" href="./src/style.css"></head>
 <body>
 <main id="app" class="app">
- <header class="hud" aria-label="相機狀態">
-  <div class="hud-cell"><span id="recDot" class="rec-dot"></span><span id="hudState">STBY</span></div>
-  <button id="hudLook" class="hud-cell hud-look" aria-label="目前色彩">01 CINEMA PRINT</button>
-  <div class="hud-cell hud-right"><span id="hudRes" class="dim">— × —</span><button id="hqToggle" class="hq" aria-pressed="false" title="HQ：用系統相機拍攝，畫質最高">HQ</button></div>
- </header>
-
  <section id="viewfinder" class="viewfinder" aria-label="取景器">
+  <header class="hud" aria-label="相機狀態">
+   <div class="hud-cell"><span id="recDot" class="rec-dot"></span><span id="hudState">STBY</span><span id="hudRes" class="dim hud-res"></span></div>
+   <button id="hudLook" class="hud-cell hud-look" aria-label="目前色彩"></button>
+   <div class="hud-cell hud-right"><button id="gridToggle" class="hq" aria-pressed="false" aria-label="構圖格線">格線</button><button id="hqToggle" class="hq" aria-pressed="false" title="HQ：用系統相機拍攝，畫質最高">HQ</button></div>
+  </header>
   <div id="frame" class="frame">
    <canvas id="preview" aria-label="即時調色取景"></canvas>
    <div id="matte" class="matte"><div id="window" class="window"><i></i><i></i><i></i><i></i><span id="frameLabel" class="frame-label"></span></div></div>
    <div id="handles" class="handles"></div>
+   <div id="reticle" class="reticle" aria-hidden="true"></div>
+   <div id="evMeter" class="ev-meter" aria-hidden="true"><i></i><b></b></div>
    <div id="lookFlash" class="look-flash" aria-hidden="true"></div>
    <div id="shutterFlash" class="shutter-flash"></div>
   </div>
@@ -32,7 +33,7 @@
   <div class="context">
    <div id="reel" class="reel" role="listbox" aria-label="電影色彩"></div>
    <div id="dial" class="dial" hidden>
-    <div class="dial-head"><span class="dial-label"></span><output></output><button class="dial-reset">重設</button></div>
+    <div class="dial-head"><span class="dial-label"></span><output></output><button class="dial-reset">重設</button><button id="dialClose" class="dial-close">完成</button></div>
     <div class="ruler" role="slider" tabindex="0"><div class="ruler-track"></div><span class="needle"></span></div>
    </div>
    <div id="aspects" class="aspects" hidden role="radiogroup" aria-label="畫幅"></div>

@@ -12,6 +12,7 @@ in vec2 uv;out vec4 frag;
 uniform int op;
 uniform sampler2D src,nearTex,farTex,baseTex;
 uniform float beauty,skinKeep,clarity;
+uniform int taps;
 uniform sampler3D lut;
 uniform vec4 crop;          // x,y,w,h in image space (top-left origin)
 uniform float mirror;
@@ -80,7 +81,7 @@ void main(){
  // Beauty: edge-preserving smoothing on skin only. Eyes, brows, hair and frames differ in tone and are kept.
  if(beauty>0.&&skin>.02){
   float R=.0045*min(outSize.x,outSize.y);vec3 sum=c;float wsum=1.;float y0=sqrt(lum(c));
-  for(int i=0;i<12;i++){float a=float(i)*.5235988;for(int k=1;k<=2;k++){vec3 q=scene(t+vec2(cos(a),sin(a))*px*R*float(k)*.5);float w=exp(-pow(sqrt(lum(q))-y0,2.)/.0032)*skinMask(q);sum+=q*w;wsum+=w;}}
+  for(int i=0;i<12;i++){if(i>=taps)break;float a=float(i)*6.2831853/float(taps);for(int k=1;k<=2;k++){vec3 q=scene(t+vec2(cos(a),sin(a))*px*R*float(k)*.5);float w=exp(-pow(sqrt(lum(q))-y0,2.)/.0032)*skinMask(q);sum+=q*w;wsum+=w;}}
   c=mix(c,sum/wsum,clamp(beauty*skin*.9,0.,1.));
  }
  // Luminance-only unsharp mask on a one-pixel cross; soft-limited so edges never ring or halo.
