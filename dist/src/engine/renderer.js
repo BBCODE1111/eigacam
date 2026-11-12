@@ -99,13 +99,13 @@ export class Renderer {
     g.uniform3f(this.loc('wb'), ...gains.map(v => v / norm));
     g.uniform3f(this.loc('glowTint'), ...tint.map(v => v / tintL));
     g.uniform1f(this.loc('exposure'), 2 ** (s.exposure ?? 0));
-    g.uniform1f(this.loc('threshold'), .78);
+    g.uniform1f(this.loc('threshold'), .78); g.uniform1f(this.loc('indoor'), s.indoor ?? 0);
     const lut = this.lut;
     g.uniform1f(this.loc('lutSize'), lut.size); g.uniform1f(this.loc('lutDisplay'), lut.input === 'display' ? 1 : 0);
     g.uniform3f(this.loc('domainMin'), ...(lut.domainMin ?? [0, 0, 0])); g.uniform3f(this.loc('domainMax'), ...(lut.domainMax ?? [1, 1, 1]));
     const glow = (s.halation ?? 0) + (s.bloom ?? 0) > 0;
     for (const unit of [1, 2, 4]) {g.activeTexture(g.TEXTURE0 + unit); g.bindTexture(g.TEXTURE_2D, null);} // no feedback loops
-    if ((s.clarity ?? 0) > 0) { // blurred scene for light emphasis
+    if ((s.clarity ?? 0) > 0 || (s.soft ?? 0) > 0) { // blurred scene for light emphasis
       g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, this.sourceTexture);
       g.uniform1f(this.loc('threshold'), -5); this.pass(1, T.baseA); this.blur(T.baseA, T.baseB, .035); g.uniform1f(this.loc('threshold'), .78);
     }
@@ -117,7 +117,7 @@ export class Renderer {
     g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, T.nearA.tex);
     g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, T.farA.tex);
     g.activeTexture(g.TEXTURE4); g.bindTexture(g.TEXTURE_2D, T.baseA.tex);
-    g.uniform1i(this.loc('taps'), s.taps ?? 12); g.uniform1f(this.loc('beauty'), s.beauty ?? 0); g.uniform1f(this.loc('skinKeep'), s.skinKeep ?? 0); g.uniform1f(this.loc('clarity'), s.clarity ?? 0);
+    g.uniform1i(this.loc('taps'), s.taps ?? 12); g.uniform1f(this.loc('beauty'), s.beauty ?? 0); g.uniform1f(this.loc('skinKeep'), s.skinKeep ?? 0); g.uniform1f(this.loc('clarity'), s.clarity ?? 0); g.uniform1f(this.loc('soft'), s.soft ?? 0);
     g.uniform1f(this.loc('halation'), glow ? s.halation : 0); g.uniform1f(this.loc('bloom'), glow ? s.bloom : 0);
     g.uniform1f(this.loc('sharpen'), s.sharpen ?? 0); g.uniform1f(this.loc('strength'), s.strength ?? 1);
     g.uniform1f(this.loc('grainAmount'), s.grain ?? 0); g.uniform1f(this.loc('grainSize'), s.grainSize ?? 1.5);

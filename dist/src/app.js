@@ -24,13 +24,13 @@ const PARAMS = [
  {key: 'masks', code: 'MASK', label: '遮色片', type: 'masks'}
 ];
 const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];
-const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ['grid', false], ...PARAMS.map(p => [p.key, p.def])]);
+const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ['grid', false], ['indoor', false], ...PARAMS.map(p => [p.key, p.def])]);
 const store = {get(k) {try {return JSON.parse(localStorage.getItem(k));} catch {return null;}}, set(k, v) {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}};
 const prefs = {...defaults, ...(store.get('eigacam.prefs') ?? {})};
 let saveTimer; // debounced: dragging a dial must not write storage on every move
 const savePrefs = () => {clearTimeout(saveTimer); saveTimer = setTimeout(() => store.set('eigacam.prefs', prefs), 250);};
 addEventListener('pagehide', () => store.set('eigacam.prefs', prefs));
-const dials = () => Object.fromEntries(PARAMS.filter(p => !p.type).map(p => [p.key, prefs[p.key]]));
+const dials = () => ({...Object.fromEntries(PARAMS.filter(p => !p.type).map(p => [p.key, prefs[p.key]])), indoor: prefs.indoor ? 1 : 0});
 
 // ---------- looks & LUTs ----------
 let custom = null; // {look, lut}
@@ -111,7 +111,7 @@ function setState(name) {$('hudState').textContent = name; $('app').dataset.stat
 function updateControls() {
  $('flip').disabled = !live; $('vfIdle').hidden = live || pending || !!still; $('frame').hidden = !live && !still;
  $('hudRes').textContent = live ? `${video.videoWidth}×${video.videoHeight}` : '';
- $('gridToggle').setAttribute('aria-pressed', !!prefs.grid);
+ $('gridToggle').setAttribute('aria-pressed', !!prefs.grid); $('indoorToggle').setAttribute('aria-pressed', !!prefs.indoor);
  $('hqToggle').setAttribute('aria-pressed', prefs.hq); $('app').classList.toggle('hq', prefs.hq);
  $('shutter').setAttribute('aria-label', prefs.hq ? '用 HQ 系統相機拍攝' : live ? '拍攝' : '開啟相機');
  setState(pending ? 'WAIT' : live ? 'LIVE' : 'STBY');
@@ -562,6 +562,7 @@ $('flip').onclick = () => startCamera(camera.facing === 'user' ? 'environment' :
 $('hqToggle').onclick = () => {prefs.hq = !prefs.hq; savePrefs(); updateControls(); toast(prefs.hq ? 'HQ 開啟：快門會打開系統相機，用最高畫質拍，回來自動沖印' : 'HQ 關閉：直接用取景畫面拍攝');};
 $('hudLook').onclick = () => openParam('');
 $('dialClose').onclick = () => openParam('');
+$('indoorToggle').onclick = () => {prefs.indoor = !prefs.indoor; savePrefs(); updateControls(); requestDraw(); toast(prefs.indoor ? '室內模式：自動補光、提亮暗部、減少燈光色偏' : '室內模式關閉');};
 $('gridToggle').onclick = () => {prefs.grid = !prefs.grid; savePrefs(); updateControls(); layout();};
 document.addEventListener('keydown', e => {if (e.target.closest('input, [role=slider]')) return; if (e.code === 'Space' || e.key === 'Enter' && e.target === document.body) {e.preventDefault(); shoot();} if (e.key === 'Escape') {if (studio) closeStudio(); else if (!$('viewer').hidden) $('viewerBack').click(); else if (!$('roll').hidden) closeSheet('roll'); else openParam('');}});
 document.addEventListener('visibilitychange', () => {if (document.hidden && (live || pending)) {stopCamera(); resumeAfterNative = resumeAfterNative || 'visibility';} else if (!document.hidden && resumeAfterNative === 'visibility') {resumeAfterNative = false; startCamera();}});

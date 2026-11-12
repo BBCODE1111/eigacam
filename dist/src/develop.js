@@ -10,7 +10,8 @@ export function renderSettings(look, dials, extra = {}) {
   grain: (look.grain?.amount ?? 0) * dials.grain / 100, grainSize: look.grain?.size ?? 1.5,
   halation: (look.glow?.halation ?? 0) * glow, bloom: (look.glow?.bloom ?? 0) * glow, glowHue: look.glow?.hue ?? 20, glowSat: look.glow?.sat ?? .55,
   vignette: look.vignette ?? .12, masks: look.masks ?? [],
-  beauty: (dials.beauty ?? 40) / 100, skinKeep: look.skin ?? .3, clarity: look.clarity ?? 0, ...extra
+  beauty: (dials.beauty ?? 40) / 100, skinKeep: look.skin ?? .3, clarity: look.clarity ?? 0,
+  soft: (look.soft ?? 0) * glow, indoor: dials.indoor ? 1 : 0, ...extra
  };
 }
 

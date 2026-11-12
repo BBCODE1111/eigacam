@@ -39,9 +39,9 @@ export const LOOKS = [
     hues: [[18, 16, 2, 1.05, .005], [29, 20, 2, 1, .005], [48, 18, -2, 1.06, .02], [60, 16, -2, 1.02, .02], [105, 25, 4, .92, .02], [142, 30, 14, .95, .035], [195, 30, -4, 1.08, .03], [262, 30, -14, 1.02, .045], [328, 25, 0, .95, .01]],
     shadows: [215, .02], highlights: [82, .008],
     tone: {contrast: .95, pivot: .4, black: .034, white: 1, knee: .8},
-    skin: .75, clarity: .22,
+    skin: .75, clarity: .22, soft: .5, // diffusion over the scene, film grain in the air, the person stays crisp
     vignette: .04,
-    grain: {amount: .035, size: 1.6}, glow: {halation: .1, bloom: .42, hue: 30}
+    grain: {amount: .055, size: 1.7}, glow: {halation: .14, bloom: .5, hue: 30}
   }
 ];
 
@@ -78,9 +78,9 @@ LOOKS.push(
   shadows: [45, .022], highlights: [80, .02],
   tone: {contrast: 1.1, pivot: .45, black: .018, white: .985, knee: .76},
   print: [[.008, 1, 1], [.003, 1.01, .99], [0, 1.05, .93]],
-  vignette: .2, skin: .6, clarity: .3,
+  vignette: .2, skin: .6, clarity: .3, soft: .55,
   masks: [createMask('luma', {name: '燈光暈', lo: 72, hi: 100, feather: 14, adj: {hue: 40, amount: 18}})],
-  grain: {amount: .06, size: 1.8}, glow: {halation: .35, bloom: .35, hue: 30}
+  grain: {amount: .065, size: 1.8}, glow: {halation: .4, bloom: .45, hue: 30}
  }
 );
 

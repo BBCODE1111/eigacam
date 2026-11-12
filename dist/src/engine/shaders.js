@@ -11,7 +11,8 @@ precision highp sampler3D;
 in vec2 uv;out vec4 frag;
 uniform int op;
 uniform sampler2D src,nearTex,farTex,baseTex;
-uniform float beauty,skinKeep,clarity;
+uniform float beauty,skinKeep,clarity,soft,indoor;
+vec3 autoGain=vec3(1.); // indoor mode: exposure and white-balance correction from the scene average
 uniform int taps;
 uniform sampler3D lut;
 uniform vec4 crop;          // x,y,w,h in image space (top-left origin)
@@ -49,7 +50,7 @@ vec3 adjust(vec3 c,float m,int i){
  vec3 gel=hsv2rgb(vec3(l.y,1.,1.));gel/=max(lum(gel),.05);c*=mix(vec3(1.),mix(vec3(1.),gel,.55),l.z*m);
  return c;
 }
-vec3 scene(vec2 t){return decode(texture(src,t).rgb)*exposure*wb;}
+vec3 scene(vec2 t){return decode(texture(src,t).rgb)*exposure*wb*autoGain;}
 // Skin likelihood from the classic YCbCr skin cluster, softened so it fades rather than cuts.
 float skinMask(vec3 lin){
  vec3 p=clamp(encode(lin),0.,1.)*255.;float y=dot(p,vec3(.299,.587,.114));
@@ -70,6 +71,11 @@ vec3 lookup(vec3 lin){
 }
 
 void main(){
+ if(indoor>0.){ // the smallest mip level is the scene average: brighten dim rooms and ease the lamp colour cast
+  vec3 avg=decode(textureLod(src,vec2(.5),20.).rgb)*wb+1e-4;float y=lum(avg);
+  float gain=clamp(.2/(y*exposure),1.,2.6);vec3 neutralise=clamp(vec3(y)/avg,.72,1.35);
+  autoGain=mix(vec3(1.),gain*mix(vec3(1.),neutralise,.45),indoor);
+ }
  if(op==1){ // highlight energy, measured on the exposed scene; coloured lights count as bright
   vec3 c=scene(sourceUV(uv));float l=max(lum(c),max(c.r,max(c.g,c.b))*.8);
   frag=vec4(c*smoothstep(threshold-.18,threshold+.25,l),1.);return;
@@ -91,7 +97,10 @@ void main(){
  vec2 img=imageCoord(uv);vec3 base=c;float shown=0.;
  for(int i=0;i<8;i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m,i);if(i==maskView-1)shown=m;}
  // Light emphasis: large-scale dodge and burn against a blurred copy of the scene; gentler on faces.
+ if(indoor>0.){float y=lum(c);c*=1.+indoor*.55*(1.-smoothstep(0.,.22,y));} // fill light in the shadows
  if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}
+ // Soft focus (diffusion filter): low-frequency light spreads over the frame while detail stays sharp underneath; people keep most of their crispness.
+ if(soft>0.){vec3 mist=texture(baseTex,uv).rgb;c+=max(mist-c,vec3(0.))*soft*(1.-.65*skin)+(mist-c)*soft*.18*(1.-skin);}
  vec3 neutral=clamp(encode(c),0.,1.);
  vec3 glow=texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4);
  vec3 color=mix(neutral,lookup(c+glow),strength);
