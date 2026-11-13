@@ -103,7 +103,7 @@ LOOKS.push(...[
     "id": "kirinoma-dusk",
     "code": "07",
     "name": "暮色原味",
-    "en": "KIRINOMA · DUSK",
+    "en": "VINTAGE CINEMA · DUSK",
     "swatch": [
       "#464f50",
       "#a3a08d",
@@ -291,7 +291,7 @@ LOOKS.push(...[
     "id": "kirinoma-sun",
     "code": "08",
     "name": "暖膚日光",
-    "en": "KIRINOMA · SUN",
+    "en": "VINTAGE CINEMA · SUN",
     "swatch": [
       "#66574c",
       "#c6ae88",
@@ -479,7 +479,7 @@ LOOKS.push(...[
     "id": "kirinoma-blue",
     "code": "09",
     "name": "冷青夜色",
-    "en": "KIRINOMA · BLUE",
+    "en": "VINTAGE CINEMA · BLUE",
     "swatch": [
       "#384e59",
       "#8ba4a2",
