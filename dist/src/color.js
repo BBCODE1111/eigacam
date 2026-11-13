@@ -145,6 +145,18 @@ function bandValue(h, values) {
   return values[0];
 }
 const display = v => toDisplay(Math.max(0, v));
+// Shape-preserving Hermite interpolation of arbitrary XMP knots (normalised 0..1).
+export function pointCurve(points, x) {
+ if (!points?.length) return x;
+ if (x <= points[0][0]) return points[0][1];
+ const last = points.length - 1;
+ if (x >= points[last][0]) return points[last][1];
+ const d = points.slice(1).map((p,i)=>(p[1]-points[i][1])/(p[0]-points[i][0]));
+ const slopes = d.map((v,i)=>i===0?v:d[i-1]*v<=0?0:2*d[i-1]*v/(d[i-1]+v)); slopes.push(d.at(-1));
+ let i=0; while(points[i+1][0]<x) i++;
+ const w=points[i+1][0]-points[i][0], t=(x-points[i][0])/w;
+ return Math.min(1,Math.max(0,(2*t**3-3*t*t+1)*points[i][1]+(t**3-2*t*t+t)*w*slopes[i]+(-2*t**3+3*t*t)*points[i+1][1]+(t**3-t*t)*w*slopes[i+1]));
+}
 export function lightroomTransform(rgb, lr) {
   const b = lr.basic ?? {}, t = (b.temp ?? 0) / 100, tint = (b.tint ?? 0) / 100;
   let gains = [Math.exp(.3 * t), Math.exp(-.28 * tint), Math.exp(-.3 * t)];
@@ -177,6 +189,11 @@ export function lightroomTransform(rgb, lr) {
   d = hsvToRgb(h, s, v);
   const lumScale = 1 + dl / 100 * .35 * presence;
   d = d.map(x => x * lumScale);
+  // XMP master then RGB curves. Optional, so existing looks remain unchanged.
+  if (lr.curves) {
+    const amount = lr.curveMix ?? 1;
+    d = d.map((x,i) => {const master=pointCurve(lr.curves.m,x); const graded=pointCurve(lr.curves[['r','g','b'][i]],master); return x+(graded-x)*amount;});
+  }
   // Color grading: shadows / midtones / highlights wheels, blending and balance.
   const g = lr.grading;
   if (g) {

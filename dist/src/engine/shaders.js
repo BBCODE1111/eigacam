@@ -11,7 +11,7 @@ precision highp sampler3D;
 in vec2 uv;out vec4 frag;
 uniform int op;
 uniform sampler2D src,nearTex,farTex,baseTex;
-uniform float beauty,skinKeep,clarity,soft,indoor;
+uniform float beauty,skinKeep,clarity,soft,indoor,localClarity,localClarityLow;
 vec3 autoGain=vec3(1.); // indoor mode: exposure and white-balance correction from the scene average
 uniform int taps;
 uniform sampler3D lut;
@@ -101,6 +101,9 @@ void main(){
  if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}
  // Soft focus (diffusion filter): low-frequency light spreads over the frame while detail stays sharp underneath; people keep most of their crispness.
  if(soft>0.){vec3 mist=texture(baseTex,uv).rgb;c+=max(mist-c,vec3(0.))*soft*(1.-.65*skin)+(mist-c)*soft*.18*(1.-skin);}
+ // Approximate XMP luminance-range negative clarity. Reduce local luminance
+ // contrast rather than blurring RGB edges; retain high-frequency texture.
+ if(localClarity<0.){float y=lum(c), by=lum(texture(baseTex,uv).rgb);float m=smoothstep(0.,max(.01,localClarityLow),lum(encode(c)));float target=mix(y,by,-localClarity*.38*m*(1.-.4*skin));c*=clamp((target+.001)/(y+.001),.7,1.4);}
  vec3 neutral=clamp(encode(c),0.,1.);
  vec3 glow=texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4);
  vec3 color=mix(neutral,lookup(c+glow),strength);

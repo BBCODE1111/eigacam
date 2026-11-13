@@ -6,7 +6,7 @@ import {renderSettings} from '../dist/src/develop.js';
 import {toLinear as toLinearT} from '../dist/src/color.js';
 
 test('kept looks and Love Letter variants with unique ids, sequential codes and complete metadata', () => {
- assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library', 'transformer']);
+ assert.deepEqual(LOOKS.map(l => l.id), ['nightcity', 'neonrain', 'loveletter', 'loveletter-snow', 'loveletter-library', 'transformer', 'kirinoma-dusk', 'kirinoma-sun', 'kirinoma-blue']);
  LOOKS.forEach((l, i) => {assert.equal(l.code, String(i + 1).padStart(2, '0')); assert.ok(l.name && l.en && l.desc); assert.equal(l.swatch.length, 3); assert.ok(l.tone || l.lr); assert.ok(l.grain); assert.ok(l.glow);});
  assert.equal(findLook('nightcity').name, '賽博夜城'); assert.equal(findLook('missing').id, 'nightcity'); assert.equal(findLook('loveletter').name, '情書');
 });
@@ -18,7 +18,7 @@ test('looks never invert tones: brighter grey in, brighter out', () => {
  for (const l of LOOKS) {let prev = -1; for (let i = 0; i <= 60; i++) {const x = shaperDecode(i / 60), [r, g, b] = lookTransform([x, x, x], l), y = .2126 * r + .7152 * g + .0722 * b; assert.ok(y >= prev - 1e-6, `${l.id} at ${x}`); prev = y;}}
 });
 test('looks keep black near black and white near white', () => {
- for (const l of LOOKS) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .12, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .85, l.id); assert.ok(Math.min(...white) > .65, l.id);} // tungsten looks keep golden whites
+ for (const l of LOOKS.filter(l=>!l.source)) {const black = lookTransform([0, 0, 0], l), white = lookTransform([1, 1, 1], l); assert.ok(Math.max(...black) < .12, l.id); assert.ok(.2126 * white[0] + .7152 * white[1] + .0722 * white[2] > .85, l.id); assert.ok(Math.min(...white) > .65, l.id);} // tungsten looks keep golden whites
 });
 test('tone curve is monotonic with a soft shoulder above white', () => {
  const t = {contrast: 1.3, pivot: .45, black: .02, white: .98, knee: .8}; let prev = -1;
@@ -104,4 +104,23 @@ test('Library is its own dark tungsten look', () => {
  const look = findLook('loveletter-library'); assert.equal(look.lutOf, undefined);
  const mid = lookTransform([.18, .18, .18], look); assert.ok(mid[0] > mid[1] && mid[1] > mid[2], 'amber midtones');
  assert.ok(Math.max(...lookTransform([.012, .012, .012], look)) < .2, 'near-black shadows');
+});
+
+test('Kirinoma XMP variants intentionally lift black, compress white, and remain distinct',()=>{
+ const ids=['kirinoma-dusk','kirinoma-sun','kirinoma-blue'];
+ const outputs=ids.map(id=>{
+  const l=findLook(id),black=lookTransform([0,0,0],l),white=lookTransform([1,1,1],l);
+  assert.equal(l.lr.basic.highlights,-41);assert.equal(l.lr.basic.shadows,62);assert.equal(l.lr.basic.whites,-77);assert.equal(l.lr.basic.blacks,73);
+  assert.ok(black.every(x=>x>.03&&x<.25));assert.ok(white.every(x=>x>.65&&x<.99));
+  assert.ok(l.lr.hsl.green[1]<=-70);assert.ok(l.skin<.2);assert.ok(l.localClarity<0);
+  return lookTransform([.12,.28,.09],l);
+ });
+ assert.notDeepEqual(outputs[0],outputs[1]);assert.notDeepEqual(outputs[1],outputs[2]);
+});
+test('XMP curve knots survive interpolation and neutral optional curves stay neutral',async()=>{
+ const {pointCurve,lightroomTransform}=await import('../dist/src/color.js');
+ const points=[[0,58/255],[98/255,61/255],[153/255,73/255],[1,211/255]];
+ for(const [x,y] of points)assert.ok(Math.abs(pointCurve(points,x)-y)<1e-12);
+ let prev=-1;for(let i=0;i<=1000;i++){const y=pointCurve(points,i/1000);assert.ok(y>=prev-1e-9);prev=y;}
+ const rgb=[.18,.3,.1];assert.deepEqual(lightroomTransform(rgb,{}),lightroomTransform(rgb,{curves:{m:points},curveMix:0}));
 });
