@@ -4,7 +4,7 @@
 <main id="app" class="app">
  <section id="viewfinder" class="viewfinder" aria-label="取景器">
   <header class="hud" aria-label="相機狀態">
-   <div class="hud-cell"><span id="recDot" class="rec-dot"></span><span id="hudState">STBY</span><span id="hudRes" class="dim hud-res"></span></div>
+   <div class="hud-cell"><span id="recDot" class="rec-dot"></span><span id="hudState">STBY</span><span id="hudMode" class="hud-mode"></span><span id="hudRes" class="dim hud-res"></span></div>
    <button id="hudLook" class="hud-cell hud-look" aria-label="目前色彩"></button>
    <div class="hud-cell hud-right"><button id="indoorToggle" class="hq" aria-pressed="false" title="室內模式：自動補光、減少燈光色偏">室內</button><button id="gridToggle" class="hq" aria-pressed="false" aria-label="構圖格線">格線</button><button id="hqToggle" class="hq" aria-pressed="false" title="HQ：用系統相機拍攝，畫質最高">HQ</button></div>
   </header>
@@ -12,6 +12,8 @@
    <canvas id="preview" aria-label="即時調色取景"></canvas>
    <div id="matte" class="matte"><div id="window" class="window"><i></i><i></i><i></i><i></i><span id="frameLabel" class="frame-label"></span></div></div>
    <div id="handles" class="handles"></div>
+   <img id="ghost" class="exposure-ghost" alt="" hidden>
+   <div id="count" class="count" aria-live="polite" hidden></div>
    <div id="reticle" class="reticle" aria-hidden="true"></div>
    <div id="evMeter" class="ev-meter" aria-hidden="true"><i></i><b></b></div>
    <div id="lookFlash" class="look-flash" aria-hidden="true"></div>
@@ -32,6 +34,7 @@
   <div id="params" class="params" role="toolbar" aria-label="拍攝參數"></div>
   <div class="context">
    <div id="reel" class="reel" role="listbox" aria-label="電影色彩"></div>
+   <button id="pickerOpen" class="picker-open" aria-label="打開所有電影色彩"><i></i><i></i><i></i><i></i></button>
    <div id="dial" class="dial" hidden>
     <div class="dial-head"><span class="dial-label"></span><output></output><button class="dial-reset">重設</button><button id="dialClose" class="dial-close">完成</button></div>
     <div class="ruler" role="slider" tabindex="0"><div class="ruler-track"></div><span class="needle"></span></div>
@@ -71,15 +74,21 @@
  <header class="sheet-head"><button class="back" id="viewerBack" aria-label="回到底片盒">‹ 底片盒</button><h2 id="viewerTitle"></h2><button id="viewerDelete" class="link danger-text">刪除</button></header>
  <div class="viewer-stage"><img id="viewerImage" alt=""><div id="viewerBusy" class="busy" hidden><span></span>重新沖印中</div></div>
  <p id="viewerMeta" class="viewer-meta"></p>
- <div id="viewerReel" class="reel compact" aria-label="換一種色彩重新沖印"></div>
+ <div id="viewerReel" class="viewer-change"><button id="viewerChange" class="ghost">換色彩 · 從原始檔重新沖印</button></div>
  <footer class="sheet-foot"><button id="viewerDownload" class="ghost">下載檔案</button><button id="viewerShare" class="primary">儲存到相簿</button></footer>
  <p id="viewerStatus" class="sheet-note" role="status"></p>
+</section>
+
+<section id="picker" class="sheet picker" hidden aria-label="電影色彩">
+ <header class="sheet-head"><button class="back" id="pickerBack" aria-label="返回">‹ 返回</button><h2>電影色彩</h2><button id="pickerImport" class="link">匯入</button></header>
+ <div id="pickerGrid" class="picker-grid"></div>
+ <p class="sheet-note">縮圖是用你眼前的畫面即時算出來的。「匯入」支援 .cube 和 Lightroom .xmp。</p>
 </section>
 
 <video id="cameraVideo" autoplay muted playsinline aria-hidden="true"></video>
 <div id="toast" role="status" aria-live="polite"></div>
 <input id="photoInput" type="file" accept="image/*" multiple hidden>
 <input id="captureInput" type="file" accept="image/*" capture="environment" hidden>
-<input id="cubeInput" type="file" accept=".cube" hidden>
+<input id="cubeInput" type="file" accept=".cube,.xmp,.CUBE,.XMP" hidden>
 <script type="module" src="./src/app.js"></script>
 </body></html>

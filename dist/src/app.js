@@ -1,11 +1,11 @@
 import {Renderer} from './engine/renderer.js';
 import {CameraSession, fitInside} from './camera.js';
 import {LOOKS, findLook} from './looks.js';
-import {bakeLook, parseCube, cropFor, outputSize} from './color.js';
+import {bakeLook, parseCube, parseXMP, cropFor, outputSize} from './color.js';
 import {develop, renderSettings} from './develop.js';
 import {addShot, updateShot, listShots, getFile, deleteShots, persist} from './roll.js';
 import {canSharePhoto, sharePhoto} from './photo-delivery.js';
-import {canvasBlob, download, decodeImage} from './files.js';
+import {canvasBlob, download, decodeImage, tagJPEG, readTag} from './files.js';
 import {MASK_TYPES, ADJUSTMENTS, GEOMETRY, MAX_MASKS, createMask, duplicateMask, sanitizeMasks} from './masks.js';
 
 const $ = id => document.getElementById(id);
@@ -14,6 +14,7 @@ const video = $('cameraVideo'), camera = new CameraSession(navigator.mediaDevice
 // ---------- preferences ----------
 const PARAMS = [
  {key: 'ev', code: 'EV', label: '曝光', min: -2, max: 2, step: .1, def: 0, fmt: v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(1)},
+ {key: 'mode', code: 'MODE', label: '模式', type: 'mode', def: 'single'},
  {key: 'ratio', code: 'FRAME', label: '畫幅', type: 'aspect', def: 0},
  {key: 'strength', code: 'MIX', label: '濃度', min: 0, max: 100, step: 1, def: 100, fmt: v => v + '%'},
  {key: 'warmth', code: 'WB', label: '色溫', min: -50, max: 50, step: 1, def: 0, fmt: v => v > 0 ? '暖' + v : v < 0 ? '冷' + -v : '±0'},
@@ -23,8 +24,11 @@ const PARAMS = [
  {key: 'beauty', code: 'SKIN', label: '美肌', min: 0, max: 100, step: 5, def: 40, fmt: v => String(v)},
  {key: 'masks', code: 'MASK', label: '遮色片', type: 'masks'}
 ];
+// Capture modes a film camera would offer: multiple exposure, slow shutter, light trails, self-timer.
+const MODES = [{id: 'single', label: '單張', glyph: '1×'}, {id: 'double', label: '重曝', glyph: '2×'}, {id: 'slow1', label: '慢門 1秒', glyph: '1″', secs: 1}, {id: 'slow4', label: '慢門 4秒', glyph: '4″', secs: 4}, {id: 'trail', label: '光軌 4秒', glyph: '≋', secs: 4, lighten: true}, {id: 'timer', label: '倒數 3秒', glyph: '◷'}];
+const modeOf = () => MODES.find(m => m.id === prefs.mode) ?? MODES[0];
 const ASPECTS = [{value: 0, label: '原生', code: 'FULL'}, {value: 16 / 9, label: '16:9', code: 'HDTV'}, {value: 1.85, label: '1.85', code: 'FLAT'}, {value: 2.39, label: '2.39', code: 'SCOPE'}];
-const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ['grid', false], ['indoor', false], ...PARAMS.map(p => [p.key, p.def])]);
+const defaults = Object.fromEntries([['look', 'nightcity'], ['hq', false], ['grid', false], ['indoor', false], ['mode', 'single'], ...PARAMS.map(p => [p.key, p.def])]);
 const store = {get(k) {try {return JSON.parse(localStorage.getItem(k));} catch {return null;}}, set(k, v) {try {localStorage.setItem(k, JSON.stringify(v));} catch {}}};
 const prefs = {...defaults, ...(store.get('eigacam.prefs') ?? {})};
 let saveTimer; // debounced: dragging a dial must not write storage on every move
@@ -39,15 +43,28 @@ function customLook(lut) {return {id: 'custom', code: 'LUT', name: '自訂 LUT',
 // User recipes: a base look plus the user's own masks, kept on this device.
 let recipes = (store.get('eigacam.recipes') ?? []).filter(r => r && typeof r.id === 'string' && typeof r.base === 'string').map(r => ({id: r.id.slice(0, 40), name: String(r.name ?? '我的配方').slice(0, 24), base: r.base, masks: sanitizeMasks(r.masks)}));
 const saveRecipes = () => store.set('eigacam.recipes', recipes);
-function baseLook(id) {return id === 'custom' && custom ? custom.look : findLook(id);}
-function recipeLook(r, i) {const base = baseLook(r.base); return {...base, id: r.id, code: 'R' + (i + 1), name: r.name, en: 'MY RECIPE · ' + base.en, desc: `以「${base.name}」為底，加上 ${r.masks.length} 個遮色片。`, lutOf: base.lutOf ?? base.id, masks: r.masks, recipe: r};}
-const allLooks = () => [...LOOKS, ...recipes.map(recipeLook), ...(custom ? [custom.look] : [])];
+// Imported Lightroom presets: the .xmp text is kept and parsed again on load.
+let imports = [];
+for (const x of (store.get('eigacam.imports') ?? []).slice(0, 24)) {try {if (typeof x?.id === 'string' && typeof x.text === 'string') imports.push({id: x.id.slice(0, 40), name: String(x.name ?? 'XMP').slice(0, 24), text: x.text, config: parseXMP(x.text)});} catch {}}
+const saveImports = () => {try {localStorage.setItem('eigacam.imports', JSON.stringify(imports.map(({id, name, text}) => ({id, name, text}))));} catch {toast('儲存空間不足，重新整理後需要再匯入一次');}};
+function importLook(x, i) {const {name: _, ...config} = x.config; return {id: x.id, code: 'X' + (i + 1), name: x.name, en: 'XMP · ' + x.name.toUpperCase(), swatch: ['#2b2b2b', '#8a8a8a', '#e6e6e6'], desc: '匯入的 Lightroom 預設（近似換算）。', imported: true, skin: .3, glow: {halation: .08, bloom: .08, hue: 30}, ...config};}
+function baseLook(id) {
+ if (id === 'custom' && custom) return custom.look;
+ const i = imports.findIndex(x => x.id === id); return i >= 0 ? importLook(imports[i], i) : findLook(id);
+}
+function recipeLook(r, i) {const base = baseLook(r.base); return {...base, id: r.id, code: 'R' + (i + 1), name: r.name, en: 'MY RECIPE · ' + base.en, desc: `以「${base.name}」為底，加上 ${r.masks.length} 個遮色片。`, lutOf: base.lutOf ?? base.id, masks: r.masks, recipe: r, imported: false};}
+const allLooks = () => [...LOOKS, ...imports.map(importLook), ...(custom ? [custom.look] : []), ...recipes.map(recipeLook)];
 function lookById(id) {const i = recipes.findIndex(r => r.id === id); return i >= 0 ? recipeLook(recipes[i], i) : baseLook(id);}
+function seriesOf(l) {
+ if (l.recipe) return '我的配方'; if (l.imported || l.id === 'custom') return '匯入的濾鏡';
+ if (l.id.startsWith('loveletter')) return '情書 · LOVE LETTER'; if (l.id.startsWith('kirinoma')) return 'VINTAGE CINEMA';
+ return ['nightcity', 'neonrain'].includes(l.id) ? 'CYBERPUNK' : l.id === 'transformer' ? 'BLOCKBUSTER' : '其他';
+}
 const luts = new Map();
 function lutFor(id) {
  const look = lookById(id), key = look.lutOf ?? look.id; // variants and recipes share their base LUT
  if (key === 'custom') return custom ? custom.lut : lutFor(LOOKS[0].id);
- if (!luts.has(key)) luts.set(key, bakeLook(findLook(key))); return luts.get(key);
+ if (!luts.has(key)) luts.set(key, bakeLook(baseLook(key))); return luts.get(key);
 }
 if (!allLooks().some(l => l.id === prefs.look)) prefs.look = LOOKS[0].id; // removed looks fall back to the first one
 
@@ -129,7 +146,7 @@ async function startCamera(facing = camera.facing || 'environment') {
  finally {pending = false; updateControls();}
 }
 function stopCamera() {
- live = false; camera.stop(); if (studio && !still) loadStill();
+ live = false; camera.stop(); clearFirstExposure(); if (studio && !still) loadStill();
  if (frameHandle) {video.cancelVideoFrameCallback?.(frameHandle); cancelAnimationFrame(frameHandle); frameHandle = 0;}
  $('zoom').hidden = true; updateControls();
 }
@@ -157,8 +174,10 @@ async function pump() {
   const job = queue.shift(); updateBusy();
   try {
    const look = lookById(job.look);
+   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
    const out = await develop(job.blob, {lut: lutFor(look.id), ratio: job.ratio, settings: renderSettings(look, job.dials, {mirror: job.mirror, masks: job.masks})});
-   const shot = {id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, created: Date.now(), look: look.id, lookName: look.name, dials: job.dials, ratio: job.ratio, mirror: job.mirror, masks: job.masks, width: out.width, height: out.height, thumb: out.thumb};
+   out.jpeg = await tagJPEG(out.jpeg, {id, look: look.name});
+   const shot = {id, created: Date.now(), look: look.id, lookName: look.name, dials: job.dials, ratio: job.ratio, mirror: job.mirror, masks: job.masks, width: out.width, height: out.height, thumb: out.thumb};
    await saveShot(shot, job.blob, out.jpeg);
    setRollThumb(out.thumb, true);
   } catch (e) {console.error(e); toast('沖印失敗：' + (e.message || '記憶體不足'));}
@@ -176,27 +195,77 @@ function grabFrame() {
  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
  c.getContext('2d').drawImage(video, 0, 0); return canvasBlob(c, 'image/jpeg', .97).finally(() => {c.width = c.height = 1;});
 }
-let shooting = false;
+let shooting = false, firstExposure = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const nextFrame = () => new Promise(r => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(() => r()) : requestAnimationFrame(() => r()));
+function frameCanvas(maxEdge = 1e9) {
+ const k = Math.min(1, maxEdge / Math.max(video.videoWidth, video.videoHeight)), c = document.createElement('canvas');
+ c.width = Math.round(video.videoWidth * k); c.height = Math.round(video.videoHeight * k); return c;
+}
+const toJPEG = c => canvasBlob(c, 'image/jpeg', .97).finally(() => {c.width = c.height = 1;});
+// Slow shutter: average the frames that arrive while the shutter is open (motion turns silky),
+// or keep the brightest value of each pixel (light trails). Frames are averaged in groups of 8,
+// then the groups are averaged, so 8-bit rounding does not favour the first frames.
+async function longExposure(secs, lighten) {
+ const acc = frameCanvas(2560), ax = acc.getContext('2d'), grp = lighten ? null : frameCanvas(2560), gx = grp?.getContext('2d');
+ const start = performance.now(), end = start + secs * 1000; let n = 0, k = 0, groups = 0;
+ $('shutter').classList.add('exposing');
+ try {
+  while (performance.now() < end && live) {
+   await nextFrame(); if (!live) break;
+   if (lighten) {ax.globalCompositeOperation = n ? 'lighten' : 'source-over'; ax.drawImage(video, 0, 0, acc.width, acc.height);}
+   else {gx.globalAlpha = 1 / (k + 1); gx.drawImage(video, 0, 0, acc.width, acc.height); if (++k === 8) {groups++; ax.globalAlpha = 1 / groups; ax.drawImage(grp, 0, 0); k = 0;}}
+   n++; $('shutter').style.setProperty('--p', Math.min(1, (performance.now() - start) / (secs * 1000)));
+  }
+  if (!lighten && k) {groups += k / 8; ax.globalAlpha = (k / 8) / groups; ax.drawImage(grp, 0, 0);}
+  if (!n) throw Error('沒有收到畫面，請再試一次。');
+  return await toJPEG(acc);
+ } finally {$('shutter').classList.remove('exposing'); if (grp) grp.width = grp.height = 1;}
+}
+function clearFirstExposure() {if (firstExposure) {firstExposure.width = firstExposure.height = 1; firstExposure = null;} $('ghost').hidden = true; $('ghost').removeAttribute('src'); syncMode();}
+function syncMode() {const m = modeOf(); $('hudMode').textContent = m.id === 'single' ? '' : m.id === 'double' ? `· 2× ${firstExposure ? '2/2' : '1/2'}` : '· ' + m.label;}
 const shoot = guard(async () => {
  if (prefs.hq) {nativeCapture(); return;}
  if (!live) {await startCamera(); return;}
  if (shooting) return; shooting = true;
- const job = {look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: camera.facing === 'user', masks: structuredClone(activeMasks())};
- $('shutterFlash').classList.remove('on'); void $('shutterFlash').offsetWidth; $('shutterFlash').classList.add('on');
- setState('REC'); navigator.vibrate?.(12);
+ const mode = modeOf(), job = {look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: camera.facing === 'user', masks: structuredClone(activeMasks())};
+ const blink = () => {$('shutterFlash').classList.remove('on'); void $('shutterFlash').offsetWidth; $('shutterFlash').classList.add('on'); navigator.vibrate?.(12);};
  try {
-  // Android Chrome can take a real still photo; elsewhere keep the full-resolution sensor frame.
-  const still = 'ImageCapture' in globalThis ? await camera.takePhoto() : null;
-  job.blob = still ?? await grabFrame();
+  if (mode.id === 'timer') {for (let i = 3; i > 0 && live; i--) {$('count').hidden = false; $('count').textContent = i; navigator.vibrate?.(8); await sleep(1000);} $('count').hidden = true; if (!live) return;}
+  setState('REC');
+  if (mode.secs) {toast(mode.lighten ? '光軌曝光中，手機請拿穩' : '慢門曝光中，手機請拿穩'); job.blob = await longExposure(mode.secs, mode.lighten); blink();}
+  else if (mode.id === 'double') {
+   blink();
+   if (!firstExposure) { // first exposure: keep the frame and show it as a ghost to compose the second against
+    firstExposure = frameCanvas(); firstExposure.getContext('2d').drawImage(video, 0, 0);
+    $('ghost').src = $('preview').toDataURL('image/jpeg', .7); $('ghost').hidden = false; syncMode(); toast('第 1 次曝光完成。對好疊影的位置，再按一次快門'); return;
+   }
+   const x = firstExposure.getContext('2d'); x.globalAlpha = .5; x.drawImage(video, 0, 0, firstExposure.width, firstExposure.height);
+   const c = firstExposure; firstExposure = null; clearFirstExposure(); job.blob = await toJPEG(c);
+  } else {
+   blink();
+   // Android Chrome can take a real still photo; elsewhere keep the full-resolution sensor frame.
+   const still = 'ImageCapture' in globalThis ? await camera.takePhoto() : null;
+   job.blob = still ?? await grabFrame();
+  }
   enqueue(job);
- } finally {shooting = false; setTimeout(() => live && setState('LIVE'), 300);}
+ } finally {shooting = false; $('count').hidden = true; setTimeout(() => live && setState('LIVE'), 300);}
 });
 let resumeAfterNative = false;
 function nativeCapture() {resumeAfterNative = live; stopCamera(); $('captureInput').click();}
-function importFiles(files, label) {
- const list = [...files].filter(f => /^image\//.test(f.type) || f.type === '');
- for (const blob of list) enqueue({blob, look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: false, masks: structuredClone(activeMasks())});
- if (list.length) toast(`${label} ${list.length} 張，正以「${lookById(prefs.look).name}」沖印`);
+async function importFiles(files, label) {
+ const list = [...files].filter(f => /^image\//.test(f.type) || f.type === ''); let n = 0, reused = 0;
+ for (let blob of list) {
+  // A photo this camera already developed: go back to its original rather than grading it twice.
+  const tag = await readTag(blob).catch(() => null);
+  if (tag?.id) {
+   const original = await fileOf(String(tag.id), 'original').catch(() => null);
+   if (original) {blob = original; reused++;}
+   else if (!confirm(`這張照片已經套過「${String(tag.look ?? '濾鏡').slice(0, 30)}」。\n再套一次，兩層顏色會疊在一起。仍要匯入嗎？`)) continue;
+  }
+  enqueue({blob, look: prefs.look, dials: dials(), ratio: prefs.ratio, mirror: false, masks: structuredClone(activeMasks())}); n++;
+ }
+ if (n) toast(`${label} ${n} 張，正以「${lookById(prefs.look).name}」沖印` + (reused ? `。其中 ${reused} 張是 EIGACAM 拍過的，已改用原始檔，不會疊兩層濾鏡` : ''));
 }
 const resume = () => {const r = resumeAfterNative; resumeAfterNative = false; if (r) startCamera();};
 $('captureInput').addEventListener('change', e => {importFiles(e.target.files, 'HQ 拍攝'); e.target.value = ''; resume();});
@@ -220,17 +289,74 @@ function lookButton(look, onPick, current) {
 }
 function buildReel() {
  const reel = $('reel'); reel.replaceChildren(...allLooks().map(l => lookButton(l, selectLook, prefs.look)));
- const add = document.createElement('button'); add.className = 'look add'; add.innerHTML = '<i></i><span class="code">.CUBE</span><strong>匯入 LUT</strong>'; add.onclick = () => $('cubeInput').click(); reel.append(add);
  selectLook(prefs.look, false);
 }
 $('cubeInput').addEventListener('change', guard(async e => {
  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
- if (file.size > 12 * 1024 * 1024) throw Error('LUT 檔太大（上限 12 MB）。');
- const text = await file.text(), lut = parseCube(text);
- custom = {lut, look: customLook(lut)}; custom.look.en = (lut.title || file.name.replace(/\.cube$/i, '')).toUpperCase().slice(0, 24);
- try {localStorage.setItem('eigacam.cube', text);} catch {toast('LUT 太大，無法記住，重新整理後需再匯入');}
- buildReel(); selectLook('custom'); toast('已載入 LUT：' + custom.look.en);
+ if (file.size > 12 * 1024 * 1024) throw Error('檔案太大（上限 12 MB）。');
+ const text = await file.text(); let id;
+ if (/\.xmp$/i.test(file.name) || /camera-raw-settings/.test(text.slice(0, 4000))) {
+  const config = parseXMP(text), name = (config.name || file.name.replace(/\.xmp$/i, '')).slice(0, 24);
+  if (imports.length >= 24) throw Error('最多匯入 24 個 XMP，請先在色彩視窗刪掉幾個。');
+  id = 'x' + Date.now().toString(36); imports.push({id, name, text, config}); saveImports(); toast(`已匯入 Lightroom 預設「${name}」`);
+ } else {
+  const lut = parseCube(text);
+  custom = {lut, look: customLook(lut)}; custom.look.en = (lut.title || file.name.replace(/\.cube$/i, '')).toUpperCase().slice(0, 24); luts.delete('custom');
+  try {localStorage.setItem('eigacam.cube', text);} catch {toast('LUT 太大，無法記住，重新整理後需再匯入');}
+  id = 'custom'; toast('已載入 LUT：' + custom.look.en);
+ }
+ buildReel(); if (picker) {if (picker.camera) selectLook(id); picker.current = picker.camera ? id : picker.current; fillPicker();} else selectLook(id);
 }));
+
+// ---------- look picker: every look as a card with a live thumbnail ----------
+let picker = null, thumbRenderer = null;
+async function pickerSource(blob) {
+ const c = document.createElement('canvas'), fit = (w, h) => {const k = Math.min(1, 320 / Math.max(w, h)); c.width = Math.round(w * k); c.height = Math.round(h * k);};
+ if (!blob && live && video.videoWidth) {fit(video.videoWidth, video.videoHeight); c.getContext('2d').drawImage(video, 0, 0, c.width, c.height); return {canvas: c, mirror: camera.facing === 'user'};}
+ if (!blob) {const [latest] = await shots(); blob = latest ? await fileOf(latest.id, 'original') : await (await fetch('./assets/portrait.jpg')).blob();}
+ const d = await decodeImage(blob, 320, 120000); return {canvas: d.image, mirror: false};
+}
+function fillPicker() {
+ const grid = $('pickerGrid'); grid.replaceChildren(); let series = '';
+ for (const look of allLooks()) {
+  if (seriesOf(look) !== series) {series = seriesOf(look); const h = document.createElement('h3'); h.textContent = series; grid.append(h);}
+  const b = document.createElement('button'); b.className = 'card'; b.dataset.look = look.id; b.classList.toggle('active', look.id === picker.current);
+  b.style.setProperty('--sw', `linear-gradient(160deg, ${look.swatch.join(',')})`);
+  b.innerHTML = '<img class="thumb" alt=""><span class="code"></span><strong></strong><small></small>';
+  b.querySelector('.code').textContent = look.code + ' · ' + look.en.split(' · ').pop(); b.querySelector('strong').textContent = look.name; b.querySelector('small').textContent = look.desc;
+  b.onclick = () => {const p = picker; closePicker(); p.onPick(look.id);};
+  if (look.imported || look.id === 'custom') {
+   const x = document.createElement('span'); x.className = 'remove'; x.textContent = '×'; x.setAttribute('role', 'button'); x.setAttribute('aria-label', '刪除這個匯入的濾鏡');
+   x.onclick = ev => {ev.stopPropagation(); if (!confirm(`刪除匯入的「${look.name}」？`)) return;
+    if (look.id === 'custom') {custom = null; try {localStorage.removeItem('eigacam.cube');} catch {}} else {imports = imports.filter(i => i.id !== look.id); saveImports();}
+    recipes = recipes.filter(r => r.base !== look.id); saveRecipes(); luts.delete(look.id);
+    if (!allLooks().some(l => l.id === prefs.look)) prefs.look = LOOKS[0].id; buildReel(); fillPicker();};
+   b.append(x);
+  }
+  grid.append(b);
+ }
+ renderThumbs();
+}
+async function renderThumbs() {
+ const token = picker.token = Symbol();
+ try {
+  const src = picker.source ??= await pickerSource(picker.blob); if (picker?.token !== token) return;
+  const r = thumbRenderer ??= new Renderer(document.createElement('canvas'));
+  r.setSource(src.canvas, src.canvas.width, src.canvas.height); r.resize(src.canvas.width, src.canvas.height);
+  const neutral = {...Object.fromEntries(PARAMS.filter(p => !p.type).map(p => [p.key, p.def])), indoor: prefs.indoor ? 1 : 0};
+  for (const card of $('pickerGrid').querySelectorAll('.card')) {
+   await new Promise(requestAnimationFrame); if (picker?.token !== token) return; // one look per frame keeps the sheet scrolling smoothly
+   const look = lookById(card.dataset.look); r.setLUT(lutFor(look.id));
+   r.render(renderSettings(look, neutral, {mirror: src.mirror, taps: 6})); card.querySelector('.thumb').src = r.canvas.toDataURL('image/jpeg', .8);
+  }
+ } catch (e) {console.error(e);}
+}
+function openPicker({current, onPick, blob = null, camera: forCamera = false}) {picker = {current, onPick, blob, camera: forCamera, source: null}; fillPicker(); openSheet('picker');}
+function closePicker() {if (picker?.source) picker.source.canvas.width = picker.source.canvas.height = 1; picker = null; closeSheet('picker');}
+$('pickerBack').onclick = closePicker; $('pickerImport').onclick = () => $('cubeInput').click();
+const openCameraPicker = () => openPicker({current: prefs.look, camera: true, onPick: id => selectLook(id)});
+$('pickerOpen').onclick = openCameraPicker;
+
 // Turning the look wheel selects whatever stops under the centre, like a lens ring with click stops.
 let reelTimer;
 $('reel').addEventListener('scroll', () => {
@@ -270,7 +396,7 @@ vf.addEventListener('pointercancel', () => {gesture = null;});
 
 // ---------- parameter strip, ruler dial, aspect picker ----------
 let activeParam = '';
-function paramText(p) {if (p.type === 'masks') {const n = activeMasks().length; return n ? String(n) : '+';} return p.type === 'aspect' ? (ASPECTS.find(a => a.value === prefs.ratio) ?? ASPECTS[0]).label : p.fmt(prefs[p.key]);}
+function paramText(p) {if (p.type === 'mode') return modeOf().glyph;if (p.type === 'masks') {const n = activeMasks().length; return n ? String(n) : '+';} return p.type === 'aspect' ? (ASPECTS.find(a => a.value === prefs.ratio) ?? ASPECTS[0]).label : p.fmt(prefs[p.key]);}
 function buildParams() {
  $('params').replaceChildren(...PARAMS.map(p => {
   const b = document.createElement('button'); b.className = 'param'; b.dataset.param = p.key; b.setAttribute('aria-pressed', 'false');
@@ -285,9 +411,9 @@ function openParam(key) {
  const p = PARAMS.find(x => x.key === key);
  if (p?.type === 'masks') {openStudio(); return;}
  activeParam = key;
- $('reel').hidden = !!key; $('aspects').hidden = p?.type !== 'aspect';
+ $('reel').hidden = !!key; $('aspects').hidden = !['aspect', 'mode'].includes(p?.type); $('aspects').classList.toggle('modes', p?.type === 'mode');
  mainDial.show(p && !p.type ? {...p, label: `${p.label} · ${p.code}`, get: () => prefs[p.key], set: v => {prefs[p.key] = v; savePrefs(); syncParams(); requestDraw(); if (p.key === 'ev') setEV(v, false);}} : null);
- if (p?.type === 'aspect') buildAspects();
+ if (p?.type === 'aspect') buildAspects(); if (p?.type === 'mode') buildModes();
  if (!key) selectLook(prefs.look, false);
  syncParams();
 }
@@ -318,6 +444,13 @@ class Dial {
 }
 const mainDial = new Dial($('dial')), maskDial = new Dial($('maskDial'));
 function drawRuler() {mainDial.draw();}
+function buildModes() {
+ $('aspects').replaceChildren(...MODES.map(m => {
+  const b = document.createElement('button'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', m.id === modeOf().id);
+  b.innerHTML = `<b class="glyph">${m.glyph}</b><strong>${m.label}</strong>`;
+  b.onclick = () => {prefs.mode = m.id; savePrefs(); clearFirstExposure(); buildModes(); syncParams();}; return b;
+ }));
+}
 function buildAspects() {
  $('aspects').replaceChildren(...ASPECTS.map(a => {
   const b = document.createElement('button'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', a.value === prefs.ratio);
@@ -385,7 +518,6 @@ async function openViewer(shot) {
  $('viewerTitle').textContent = `${look.code} ${look.name}`;
  const aspect = ASPECTS.find(a => a.value === shot.ratio) ?? ASPECTS[0];
  $('viewerMeta').textContent = `${shot.width} × ${shot.height} · ${aspect.code} · ${new Date(shot.created).toLocaleString('zh-TW', {dateStyle: 'medium', timeStyle: 'short'})}`;
- $('viewerReel').replaceChildren(...allLooks().map(l => lookButton(l, redevelop, shot.look)));
  openSheet('viewer'); await showDeveloped(shot);
 }
 async function showDeveloped(shot) {
@@ -399,6 +531,7 @@ const redevelop = guard(async lookId => {
  try {
   const original = await fileOf(shot.id, 'original'), look = lookById(lookId);
   const out = await develop(original, {lut: lutFor(look.id), ratio: shot.ratio, settings: renderSettings(look, shot.dials, {mirror: shot.mirror})});
+  out.jpeg = await tagJPEG(out.jpeg, {id: shot.id, look: look.name});
   Object.assign(shot, {look: look.id, lookName: look.name, masks: look.masks ?? [], thumb: out.thumb, width: out.width, height: out.height});
   if (memoryRoll) Object.assign(memoryRoll.get(shot.id), {shot, developed: out.jpeg}); else await updateShot(shot, out.jpeg);
   $('viewerTitle').textContent = `${look.code} ${look.name}`;
@@ -406,6 +539,7 @@ const redevelop = guard(async lookId => {
   await showDeveloped(shot); renderRoll(); const [first] = await shots(); setRollThumb(first?.thumb);
  } finally {$('viewerBusy').hidden = true;}
 });
+$('viewerChange').onclick = guard(async () => {const shot = viewing; if (!shot) return; openPicker({current: shot.look, blob: await fileOf(shot.id, 'original'), onPick: redevelop});});
 $('viewerBack').onclick = () => {closeSheet('viewer'); viewing = null;};
 $('viewerShare').onclick = async () => {
  if (!viewerFile) return;
@@ -560,15 +694,15 @@ $('startCamera').onclick = () => startCamera();
 $('idleHQ').onclick = nativeCapture; $('idleImport').onclick = () => $('photoInput').click();
 $('flip').onclick = () => startCamera(camera.facing === 'user' ? 'environment' : 'user');
 $('hqToggle').onclick = () => {prefs.hq = !prefs.hq; savePrefs(); updateControls(); toast(prefs.hq ? 'HQ 開啟：快門會打開系統相機，用最高畫質拍，回來自動沖印' : 'HQ 關閉：直接用取景畫面拍攝');};
-$('hudLook').onclick = () => openParam('');
+$('hudLook').onclick = () => {openParam(''); openCameraPicker();};
 $('dialClose').onclick = () => openParam('');
 $('indoorToggle').onclick = () => {prefs.indoor = !prefs.indoor; savePrefs(); updateControls(); requestDraw(); toast(prefs.indoor ? '室內模式：自動補光、提亮暗部、減少燈光色偏' : '室內模式關閉');};
 $('gridToggle').onclick = () => {prefs.grid = !prefs.grid; savePrefs(); updateControls(); layout();};
-document.addEventListener('keydown', e => {if (e.target.closest('input, [role=slider]')) return; if (e.code === 'Space' || e.key === 'Enter' && e.target === document.body) {e.preventDefault(); shoot();} if (e.key === 'Escape') {if (studio) closeStudio(); else if (!$('viewer').hidden) $('viewerBack').click(); else if (!$('roll').hidden) closeSheet('roll'); else openParam('');}});
+document.addEventListener('keydown', e => {if (e.target.closest('input, [role=slider]')) return; if (e.code === 'Space' || e.key === 'Enter' && e.target === document.body) {e.preventDefault(); shoot();} if (e.key === 'Escape') {if (picker) closePicker(); else if (studio) closeStudio(); else if (!$('viewer').hidden) $('viewerBack').click(); else if (!$('roll').hidden) closeSheet('roll'); else openParam('');}});
 document.addEventListener('visibilitychange', () => {if (document.hidden && (live || pending)) {stopCamera(); resumeAfterNative = resumeAfterNative || 'visibility';} else if (!document.hidden && resumeAfterNative === 'visibility') {resumeAfterNative = false; startCamera();}});
 window.addEventListener('pagehide', () => camera.stop());
 
-buildParams(); buildReel(); updateControls(); layout(); setEV(prefs.ev, false);
+buildParams(); buildReel(); updateControls(); layout(); setEV(prefs.ev, false); syncMode();
 shots().then(list => {setRollThumb(list[0]?.thumb); refreshRollCount();});
 persist();
 // Re-open the camera automatically when permission was already granted.

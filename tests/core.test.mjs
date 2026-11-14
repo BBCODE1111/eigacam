@@ -124,3 +124,22 @@ test('XMP curve knots survive interpolation and neutral optional curves stay neu
  let prev=-1;for(let i=0;i<=1000;i++){const y=pointCurve(points,i/1000);assert.ok(y>=prev-1e-9);prev=y;}
  const rgb=[.18,.3,.1];assert.deepEqual(lightroomTransform(rgb,{}),lightroomTransform(rgb,{curves:{m:points},curveMix:0}));
 });
+
+import {readFileSync as readText} from 'node:fs';
+import {parseXMP} from '../dist/src/color.js';
+import {tagJPEG, readTag} from '../dist/src/files.js';
+test('.xmp presets are parsed, clamped and bake to a valid LUT', () => {
+ const x = parseXMP(readText(new URL('../dist/presets/EIGACAM-Neon-Rain.xmp', import.meta.url), 'utf8'));
+ assert.equal(x.name, 'EIGACAM Neon Rain (Cyberpunk)'); assert.equal(x.lr.basic.contrast, 42); assert.deepEqual(x.lr.hsl.green, [55, -45, -20]); assert.equal(x.lr.grading.highlights.hue, 320); assert.equal(x.lr.curves, undefined);
+ for (const v of bakeLook({lr: x.lr}, 5).data) assert.ok(Number.isFinite(v) && v >= 0 && v <= 1);
+ const wild = parseXMP('<x xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:Exposure2012="+99" crs:Contrast2012="9e9" crs:Saturation="abc"><crs:ToneCurvePV2012><rdf:Seq><rdf:li>0, 40</rdf:li><rdf:li>255, 220</rdf:li></rdf:Seq></crs:ToneCurvePV2012></x>');
+ assert.equal(wild.lr.basic.exposure, 5); assert.equal(wild.lr.basic.contrast, 100); assert.equal(wild.lr.basic.saturation, 0); assert.equal(wild.lr.curves.m.length, 2); assert.deepEqual(wild.lr.curves.r, [[0, 0], [1, 1]]);
+ assert.throws(() => parseXMP('LUT_3D_SIZE 2'), /xmp/);
+});
+test('developed JPEGs carry a marker that survives a round trip', async () => {
+ const jpeg = new Blob([new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0, 4, 1, 2, 0xFF, 0xDA, 0, 2, 9, 9])], {type: 'image/jpeg'});
+ const tagged = await tagJPEG(jpeg, {id: 'abc123', look: '情書'});
+ assert.deepEqual(await readTag(tagged), {id: 'abc123', look: '情書'}); assert.equal(await readTag(jpeg), null);
+ const bytes = new Uint8Array(await tagged.arrayBuffer()); assert.deepEqual([...bytes.slice(-10)], [0xFF, 0xE0, 0, 4, 1, 2, 0xFF, 0xDA, 0, 2].concat([9, 9]).slice(-10));
+ assert.equal(await readTag(new Blob(['not a jpeg'])), null);
+});

@@ -211,3 +211,42 @@ export function lightroomTransform(rgb, lr) {
   }
   return d.map(x => Math.min(1, Math.max(0, x)));
 }
+
+// ---------- Lightroom .xmp presets ----------
+// Reads the develop settings this engine can approximate. Every number is clamped: the file is untrusted input.
+const XMP_COLOURS = ['Red', 'Orange', 'Yellow', 'Green', 'Aqua', 'Blue', 'Purple', 'Magenta'];
+export function parseXMP(text) {
+  text = String(text);
+  if (text.length > 2_000_000 || !/crs:|camera-raw-settings/.test(text)) throw Error('這不是 Lightroom 預設檔（.xmp）。');
+  const raw = n => (text.match(new RegExp('crs:' + n + '\\s*=\\s*"([^"]*)"')) ?? text.match(new RegExp('<crs:' + n + '>\\s*([^<]*?)\\s*</crs:' + n + '>')))?.[1] ?? null;
+  const num = (n, lo = -100, hi = 100) => {const v = parseFloat(raw(n)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 0;};
+  const seq = n => {
+    const body = text.match(new RegExp('<crs:' + n + '>\\s*<rdf:Seq>([\\s\\S]*?)</rdf:Seq>'))?.[1]; if (!body) return null;
+    const pts = [...body.matchAll(/<rdf:li>\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*<\/rdf:li>/g)].slice(0, 32).map(m => [Math.min(1, Math.max(0, m[1] / 255)), Math.min(1, Math.max(0, m[2] / 255))]).sort((a, b) => a[0] - b[0]).filter((p, i, a) => !i || p[0] > a[i - 1][0]);
+    return pts.length >= 2 ? pts : null;
+  };
+  const identity = [[0, 0], [1, 1]], isIdentity = c => !c || c.every(p => Math.abs(p[0] - p[1]) < .004);
+  const curves = {m: seq('ToneCurvePV2012'), r: seq('ToneCurvePV2012Red'), g: seq('ToneCurvePV2012Green'), b: seq('ToneCurvePV2012Blue')};
+  const hasCurves = !Object.values(curves).every(isIdentity);
+  const lr = {
+    basic: {exposure: num('Exposure2012', -5, 5), contrast: num('Contrast2012'), highlights: num('Highlights2012'), shadows: num('Shadows2012'), whites: num('Whites2012'), blacks: num('Blacks2012'), temp: num('IncrementalTemperature'), tint: num('IncrementalTint'), vibrance: num('Vibrance'), saturation: num('Saturation')},
+    hsl: Object.fromEntries(XMP_COLOURS.map(c => [c.toLowerCase(), [num('HueAdjustment' + c), num('SaturationAdjustment' + c), num('LuminanceAdjustment' + c)]])),
+    grading: {
+      shadows: {hue: num('SplitToningShadowHue', 0, 360), sat: num('SplitToningShadowSaturation', 0, 100), lum: num('ColorGradeShadowLum')},
+      midtones: {hue: num('ColorGradeMidtoneHue', 0, 360), sat: num('ColorGradeMidtoneSat', 0, 100), lum: num('ColorGradeMidtoneLum')},
+      highlights: {hue: num('SplitToningHighlightHue', 0, 360), sat: num('SplitToningHighlightSaturation', 0, 100), lum: num('ColorGradeHighlightLum')},
+      blending: raw('ColorGradeBlending') === null ? 50 : num('ColorGradeBlending', 0, 100), balance: num('SplitToningBalance')
+    },
+    dehaze: num('Dehaze')
+  };
+  // Curves are written for RAW; on already-developed phone photos they are applied at partial strength.
+  if (hasCurves) {lr.curves = Object.fromEntries(Object.entries(curves).map(([k, v]) => [k, v ?? identity])); lr.curveMix = .6;}
+  const clarity = num('Clarity2012'), texture = num('Texture'), name = text.match(/<crs:Name>[\s\S]*?<rdf:li[^>]*>([^<]{1,80})<\/rdf:li>/)?.[1]?.trim() ?? '';
+  return {
+    name, lr,
+    detail: Math.min(.3, Math.max(-.15, (Math.max(0, clarity) + texture) / 200)),
+    localClarity: clarity < 0 ? Math.max(-.6, clarity / 100) : 0,
+    vignette: Math.min(.5, Math.max(0, -num('PostCropVignetteAmount') / 100)),
+    grain: {amount: num('GrainAmount', 0, 100) / 100 * .14, size: 1.2 + num('GrainSize', 0, 100) / 100}
+  };
+}

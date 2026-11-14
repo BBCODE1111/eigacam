@@ -36,9 +36,12 @@ export const LOOKS = [
     desc: '日系的清亮：畫面偏亮、空氣透明，白是乾淨的奶白，綠與藍清爽，暗部帶一點青；膚色明亮紅潤，光是柔的。',
     // Bright and clear rather than drained: colour stays, contrast is gentle, whites are clean.
     gain: [1.27, 1.28, 1.29], sat: 1, desatHi: .12,
-    hues: [[18, 16, 2, 1.05, .005], [29, 20, 2, 1, .005], [48, 18, -2, 1.06, .02], [60, 16, -2, 1.02, .02], [105, 25, 4, .92, .02], [142, 30, 14, .95, .035], [195, 30, -4, 1.08, .03], [262, 30, -14, 1.02, .045], [328, 25, 0, .95, .01]],
+    hues: [[18, 16, 2, 1.05, .005], [29, 20, 2, 1, .005], [48, 18, -2, 1.06, .02], [60, 16, -2, 1.02, .02], [105, 25, 4, .92, .02], [142, 30, 2, .93, .03], [195, 30, -4, 1.04, .03], [262, 30, -14, 1.02, .045], [328, 25, 0, .95, .01]],
     shadows: [215, .02], highlights: [82, .008],
-    tone: {contrast: .95, pivot: .4, black: .034, white: 1, knee: .8},
+    tone: {contrast: .95, pivot: .4, black: .034, white: .99, knee: .77},
+    // From the Vintage Cinema presets: whites roll off softly, shadows carry a little blue while highlights stay cream,
+    // foliage is calmer than skin, and softness comes from luminance diffusion rather than blur.
+    print: [[0, 1, 1], [0, 1, 1], [.012, 1, .985]], localClarity: -.3,
     skin: .75, clarity: .22, soft: .5, // diffusion over the scene, film grain in the air, the person stays crisp
     vignette: .04,
     grain: {amount: .055, size: 1.7}, glow: {halation: .14, bloom: .5, hue: 30}
@@ -74,11 +77,11 @@ LOOKS.push(
   desc: '傍晚的圖書館：鎢絲燈的暖金色包住整個畫面，顏色還在、不混濁，暗部是溫暖的深褐；臉透著暖光。',
   // Warm, but clear: colours keep their identity under the amber light instead of collapsing to brown.
   gain: [1.13, 1, .8], sat: 1.04, desatHi: .08, desatSh: .1,
-  hues: [[18, 14, 2, 1, 0], [29, 18, 2, 1.04, 0], [48, 18, -2, .96, .015], [62, 16, -2, .96, .015], [80, 18, -4, 1.08, .01], [105, 22, -10, 1, 0], [142, 30, -18, .8, 0], [195, 30, 0, .8, 0], [262, 30, -10, .82, 0]],
+  hues: [[18, 14, 2, 1, 0], [29, 18, 2, 1.04, 0], [48, 18, -2, .96, .015], [62, 16, -2, .96, .015], [80, 18, -4, 1.08, .01], [105, 22, -16, 1, 0], [142, 30, -24, .72, 0], [195, 30, 0, .8, 0], [262, 30, -10, .82, 0]],
   shadows: [45, .022], highlights: [80, .02],
-  tone: {contrast: 1.1, pivot: .45, black: .018, white: .985, knee: .76},
+  tone: {contrast: 1.1, pivot: .45, black: .018, white: .985, knee: .7},
   print: [[.008, 1, 1], [.003, 1.01, .99], [0, 1.05, .93]],
-  vignette: .2, skin: .6, clarity: .3, soft: .55,
+  vignette: .2, skin: .6, clarity: .3, soft: .55, localClarity: -.3,
   masks: [createMask('luma', {name: '燈光暈', lo: 72, hi: 100, feather: 14, adj: {hue: 40, amount: 18}})],
   grain: {amount: .065, size: 1.8}, glow: {halation: .4, bloom: .45, hue: 30}
  }
