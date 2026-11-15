@@ -12,7 +12,7 @@ const fragment = `#version 300 es
 precision highp float;precision highp int;precision highp sampler3D;precision highp sampler2DArray;
 in vec2 uv;out vec4 frag;
 uniform sampler2D src,curveTex,nearTex,farTex,baseTex;uniform int op;uniform vec2 direction;uniform float threshold;uniform vec3 glowTint;
-uniform float sharpen,clarity,soft,localClarity,localClarityLow,halation,bloom,skinKeep;uniform sampler3D lut;uniform sampler2DArray brushTex;
+uniform float sharpen,clarity,soft,localClarity,localClarityLow,halation,bloom,skinKeep,beauty;uniform sampler3D lut;uniform sampler2DArray brushTex;
 uniform vec2 outSize;uniform float srcAspect,bypass,strength,lutOn,lutSize,lutDisplay,curveOn;
 uniform vec3 domainMin,domainMax,gain,overlayColor;
 uniform float contrast,highlights,shadows,saturation,vignette,grainAmount,grainSize;
@@ -70,7 +70,14 @@ void main(){
  vec2 img=vec2(uv.x,1.-uv.y);
  vec4 s=texture(src,uv);
  if(bypass>.5){frag=vec4(s.rgb,1.);return;}
- vec3 c=decode(s.rgb)*gain,raw=c;float skin=skinKeep>0.||clarity>0.||soft>0.||localClarity<0.?skinMask(raw):0.;
+ vec3 c=decode(s.rgb)*gain,raw=c;float skin=skinKeep>0.||clarity>0.||soft>0.||localClarity<0.||beauty>0.?skinMask(raw):0.;
+ // Beauty (shots from the camera only): edge-preserving smoothing on skin; eyes, brows and hair differ in tone and are kept.
+ if(beauty>0.&&skin>.02){
+  vec2 px=1./outSize;float R=.0045*min(outSize.x,outSize.y);vec3 sum=c;float wsum=1.;float y0=sqrt(lum(c));
+  for(int i=0;i<12;i++){float a=float(i)*6.2831853/12.;for(int k=1;k<=2;k++){vec3 q=scene(uv+vec2(cos(a),sin(a))*px*R*float(k)*.5);float w=exp(-pow(sqrt(lum(q))-y0,2.)/.0032)*skinMask(q);sum+=q*w;wsum+=w;}}
+  c=mix(c,sum/wsum,clamp(beauty*skin*.9,0.,1.));raw=c;
+ }
+ float smoothSkin=1.-.85*skin*min(beauty*2.,1.);
  if(contrast!=0.||highlights!=0.||shadows!=0.){ // tone on display luminance, applied as a ratio so hue holds
   float y0=lum(c),Y=clamp(enc1(y0),0.,1.),Y0=Y;float k=1.+contrast*.5;
   Y=Y<.5?.5*pow(Y/.5,k):1.-.5*pow((1.-Y)/.5,k);
@@ -81,7 +88,7 @@ void main(){
  if(curveOn>.5){vec3 d=clamp(encode(c),0.,1.)*(255./256.)+.5/256.;c=decode(vec3(texture(curveTex,vec2(d.r,.5)).r,texture(curveTex,vec2(d.g,.5)).g,texture(curveTex,vec2(d.b,.5)).b));}
  if(sharpen>0.){ // luminance-only unsharp mask on a one-pixel cross, soft-limited so edges never ring
   vec2 px=1./outSize;vec3 n=(scene(uv+vec2(px.x,0.))+scene(uv-vec2(px.x,0.))+scene(uv+vec2(0.,px.y))+scene(uv-vec2(0.,px.y)))*.25;
-  float L=sqrt(max(lum(raw),0.)),N=sqrt(max(lum(n),0.)),d=L-N;d=d/(1.+abs(d)*6.);float sL=max(L+sharpen*1.6*d,0.);c*=sL*sL/max(L*L,1e-6);
+  float L=sqrt(max(lum(raw),0.)),N=sqrt(max(lum(n),0.)),d=L-N;d=d/(1.+abs(d)*6.);float sL=max(L+sharpen*smoothSkin*1.6*d,0.);c*=sL*sL/max(L*L,1e-6);
  }
  vec3 base=c;float shown=0.;
  for(int i=0;i<${MAX_SLOTS};i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m*mA[i].w,i);if(i==maskView-1)shown=m;}
@@ -94,14 +101,14 @@ void main(){
  if(lutOn>.5){
   vec3 glow=halation+bloom>0.?texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4):vec3(0.);
   color=mix(neutral,lookup(c+glow),strength);
-  if(skinKeep>0.&&skin>.02){vec3 nat=neutral*vec3(1.015,.99,.985);nat=mix(vec3(lum(nat)),nat,.92);color=mix(color,mix(nat,color,.38),skin*skinKeep*strength);}
+  if(skinKeep>0.&&skin>.02){vec3 nat=neutral*vec3(1.015,.99,.985);nat+=(1.-nat)*.05*beauty;nat=mix(vec3(lum(nat)),nat,.92);color=mix(color,mix(nat,color,.38),skin*skinKeep*strength);}
   vec2 q=uv-.5;q.x*=outSize.x/outSize.y;float r=length(q)/length(vec2(.5*outSize.x/outSize.y,.5));
   color*=1.-vignette*strength*smoothstep(.35,1.05,r);
   if(grainAmount>0.){
    vec2 g=img*outSize/min(outSize.x,outSize.y)*1000./grainSize;vec2 o=vec2(250./(min(outSize.x,outSize.y)*grainSize));
    float gn=(grain(g+o)+grain(g-o)+grain(g+vec2(o.x,-o.y))+grain(g+vec2(-o.x,o.y)))*.25;
    float y=lum(color);float w=(.35+.65*pow(max(0.,1.-abs(y-.45)*1.8),.7))*smoothstep(0.,.1,y)*(1.-.7*smoothstep(.8,1.,y));
-   color+=gn*grainAmount*strength*w;
+   color+=gn*grainAmount*strength*w*(1.-.75*skin*min(beauty*2.,1.)); // keep smoothed skin clean
   }
  }
  if(maskView>0)color=mix(color,overlayColor,shown*.55);
@@ -114,7 +121,7 @@ const TYPES = ['linear', 'radial', 'luma', 'color', 'brush'];
 
 // styleMasks follow the style's strength; user masks are always at full amount.
 export function packMasks(styleMasks, userMasks, strength, viewId) {
- const live = [...(styleMasks ?? []).filter(m => m.enabled !== false && !maskIsNeutral(m)).map(m => ({m, amount: strength})), ...(userMasks ?? []).filter(m => m.id === viewId || (m.enabled !== false && !maskIsNeutral(m))).map(m => ({m, amount: m.enabled === false ? 0 : 1}))].slice(0, MAX_SLOTS);
+ const live = [...(styleMasks ?? []).filter(m => m.enabled !== false && !maskIsNeutral(m)).map(m => ({m, amount: m.full ? 1 : strength})), ...(userMasks ?? []).filter(m => m.id === viewId || (m.enabled !== false && !maskIsNeutral(m))).map(m => ({m, amount: m.enabled === false ? 0 : 1}))].slice(0, MAX_SLOTS);
  const a = new Float32Array(MAX_SLOTS * 4), b = new Float32Array(MAX_SLOTS * 4), c = new Float32Array(MAX_SLOTS * 4), d = new Float32Array(MAX_SLOTS * 4);
  live.forEach(({m, amount}, i) => {
   const o = i * 4, geo = m.type === 'linear' ? [m.x0, m.y0, m.x1, m.y1] : m.type === 'radial' ? [m.cx, m.cy, m.rx, m.ry] : m.type === 'luma' ? [m.lo / 100, m.hi / 100, m.feather / 100, 0] : m.type === 'color' ? [m.hue / 360, m.width / 360, m.feather / 360, 0] : [0, 0, 0, 0];
@@ -256,9 +263,10 @@ export class StudioRenderer {
   f('curveOn', p.curve !== false && this.hasCurve ? 1 : 0);
   f('vignette', style?.vignette ?? 0); f('grainAmount', style?.grain?.amount ?? 0); f('grainSize', style?.grain?.size ?? 1.5);
   // Camera look effects (eigacam looks only). Everything but the glow is scaled by strength, so 0% is the untouched photo.
-  const fx = style?.fx, k = strength, glow = fx && (fx.halation + fx.bloom) > 0, base = fx && k > 0 && (fx.clarity > 0 || fx.soft > 0 || fx.localClarity < 0);
+  // A shot opened from the camera keeps the camera's rule: strength fades the colour only.
+  const fx = style?.fx, k = style?.camStrength ? 1 : strength, glow = fx && (fx.halation + fx.bloom) > 0, base = fx && k > 0 && (fx.clarity > 0 || fx.soft > 0 || fx.localClarity < 0);
   f('sharpen', (fx?.sharpen ?? 0) * k); f('clarity', (fx?.clarity ?? 0) * k); f('soft', (fx?.soft ?? 0) * k); f('localClarity', (fx?.localClarity ?? 0) * k); f('localClarityLow', fx?.localClarityLow ?? .595);
-  f('halation', glow ? fx.halation : 0); f('bloom', glow ? fx.bloom : 0); f('skinKeep', fx?.skinKeep ?? 0);
+  f('halation', glow ? fx.halation : 0); f('bloom', glow ? fx.bloom : 0); f('skinKeep', fx?.skinKeep ?? 0); f('beauty', fx?.beauty ?? 0);
   const hue = (fx?.glowHue ?? 20) / 60, gs = fx?.glowSat ?? .55, tk = n => {const v = (n + hue) % 6; return 1 - gs * Math.max(0, Math.min(v, 4 - v, 1));}, tint = [tk(5), tk(3), tk(1)], tl = .2126 * tint[0] + .7152 * tint[1] + .0722 * tint[2];
   g.uniform3f(this.loc('glowTint'), ...tint.map(v => v / tl));
   for (const unit of [1, 2, 4]) {g.activeTexture(g.TEXTURE0 + unit); g.bindTexture(g.TEXTURE_2D, null);} // no feedback loops
