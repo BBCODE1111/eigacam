@@ -425,7 +425,7 @@ async function pump() {
 function renderStyleInfo() {
  const s = styleById(state.styleId), el = $('styleInfo');
  if (!s) {el.innerHTML = photo ? '尚未套用風格' : ''; return;}
- const kind = {xmp: 'Lightroom XMP', cube: `.cube LUT${s.tags?.size ? ' ' + s.tags.size + '³' : ''}`, eigacam: 'eigacam 配方'}[s.kind];
+ const kind = {xmp: 'XMP 預設', cube: `.cube LUT${s.tags?.size ? ' ' + s.tags.size + '³' : ''}`, eigacam: 'eigacam 配方'}[s.kind];
  el.innerHTML = `<b>${esc(s.name)}</b> · ${esc(s.pack)} · ${kind}${s.virtual ? '' : '<button class="link del" id="deleteStyle">刪除</button>'}${s.notes?.length ? `<span class="note">${esc(s.notes[0])}${s.notes.length > 1 ? `（另 ${s.notes.length - 1} 項）` : ''}</span>` : ''}`;
  if (!s.virtual) $('deleteStyle').onclick = async () => {if (!confirm(`從風格庫刪除「${s.name}」？`)) return; await lib.remove([s.id]); state.styleId = null; await loadCurrentStyle(); refreshLibrary();};
 }
@@ -547,8 +547,8 @@ function initExport() {
 let installEvent = null;
 function compatTable() {
  const L = {ok: ['已實作', 'st-ok'], approx: ['近似轉換', 'st-approx'], none: ['未支援', 'st-none'], skip: ['略過', 'st-skip']};
- return `<p class="hint">Lightroom 的運算是 Adobe 專有的，而且預設是為 RAW 設計。這裡把欄位換算成對已顯影的 JPEG／PNG 合理的結果，不是逐像素重現。</p>
- <table><tr><th>Lightroom .xmp 欄位</th><th>狀態</th><th>說明</th></tr>${XMP_FIELDS.map(f => `<tr><td>${esc(f.label)}</td><td class="${L[f.status][1]}">${L[f.status][0]}</td><td>${esc(f.note ?? '')}</td></tr>`).join('')}</table>
+ return `<p class="hint">XMP 預設多半是為 RAW 設計的；這裡用 EIGASTUDIO 自己的調色運算，把各欄位套用在已顯影的 JPEG／PNG 上。</p>
+ <table><tr><th>.xmp 預設欄位</th><th>狀態</th><th>說明</th></tr>${XMP_FIELDS.map(f => `<tr><td>${esc(f.label)}</td><td class="${L[f.status][1]}">${L[f.status][0]}</td><td>${esc(f.note ?? '')}</td></tr>`).join('')}</table>
  <table><tr><th>.cube 3D LUT</th><th>狀態</th><th>說明</th></tr>
  <tr><td>LUT_3D_SIZE 2–65</td><td class="st-ok">已實作</td><td>紅色最快的格點順序；GPU 三線性內插。超過 65 會重新取樣</td></tr>
  <tr><td>DOMAIN_MIN／MAX、LUT_3D_INPUT_RANGE</td><td class="st-ok">已實作</td><td>輸入先依範圍正規化</td></tr>

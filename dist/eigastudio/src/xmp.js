@@ -1,16 +1,16 @@
-// Lightroom / Camera Raw .xmp preset reader. The file is untrusted input: every number is clamped.
+// .xmp grading preset reader (camera-raw-settings schema). The file is untrusted input: every number is clamped.
 // XMP_FIELDS is the single source for both the converter and the compatibility table shown to the user.
 
 const COLOURS = ['Red', 'Orange', 'Yellow', 'Green', 'Aqua', 'Blue', 'Purple', 'Magenta'];
 const per = prefix => COLOURS.map(c => prefix + c);
-// status: ok = 依欄位值直接套用 · approx = 以自家公式近似 Adobe 滑桿 · none = 未支援（會列為「已忽略」）· skip = 與調色無關，不提示
+// status: ok = 依欄位值直接套用 · approx = 以自家公式換算 · none = 未支援（會列為「已忽略」）· skip = 與調色無關，不提示
 export const XMP_FIELDS = [
- {label: '曲線（點曲線，含 RGB 各通道）', keys: ['ToneCurvePV2012', 'ToneCurvePV2012Red', 'ToneCurvePV2012Green', 'ToneCurvePV2012Blue'], status: 'ok', note: '節點照原值套用；節點間用保形三次插值，與 Adobe 的樣條略有差異'},
+ {label: '曲線（點曲線，含 RGB 各通道）', keys: ['ToneCurvePV2012', 'ToneCurvePV2012Red', 'ToneCurvePV2012Green', 'ToneCurvePV2012Blue'], status: 'ok', note: '節點照原值套用；節點間用保形三次插值，不同軟體的曲線內插可能略有差異'},
  {label: '飽和度', keys: ['Saturation'], status: 'ok', note: '以亮度為軸的線性飽和度'},
  {label: '黑白', keys: ['ConvertToGrayscale', 'Treatment'], status: 'ok', note: 'Rec.709 亮度轉灰階'},
  {label: '曝光', keys: ['Exposure2012'], status: 'approx', note: '線性光 ×2^EV，正值加高光滾降'},
  {label: '對比', keys: ['Contrast2012'], status: 'approx', note: '以中灰為支點的 S 曲線'},
- {label: '高光／陰影', keys: ['Highlights2012', 'Shadows2012'], status: 'approx', note: '亮度區段加權，不含 Adobe 的局部色調對應'},
+ {label: '高光／陰影', keys: ['Highlights2012', 'Shadows2012'], status: 'approx', note: '亮度區段加權，不含局部色調對應'},
  {label: '白色／黑色', keys: ['Whites2012', 'Blacks2012'], status: 'approx'},
  {label: '色溫／色調（相對值）', keys: ['IncrementalTemperature', 'IncrementalTint'], status: 'approx', note: 'JPEG／PNG 用的相對白平衡'},
  {label: '鮮豔度', keys: ['Vibrance'], status: 'approx', note: '低飽和顏色加得多，沒有膚色保護'},
@@ -25,11 +25,11 @@ export const XMP_FIELDS = [
  {label: '清晰度／紋理', keys: ['Clarity2012', 'Texture'], status: 'none', note: '需要多尺度局部對比'},
  {label: '絕對色溫／色調（Kelvin）', keys: ['Temperature', 'Tint'], status: 'none', note: '只對 RAW 有意義；JPEG 沒有原始白平衡可換算'},
  {label: '相機校正', keys: ['ShadowTint', 'RedHue', 'RedSaturation', 'GreenHue', 'GreenSaturation', 'BlueHue', 'BlueSaturation'], status: 'none'},
- {label: 'Profile／Look 查色表', keys: ['Look', 'CameraProfile', 'LookTable', 'RGBTable', 'Table_'], status: 'none', note: 'Adobe 專用編碼或外部 .dcp／profile，無法解碼'},
- {label: 'AI 遮色片（主體、天空、背景、人物）', keys: ['Mask/Image'], status: 'none', note: '需要 Adobe 的影像辨識模型'},
+ {label: 'Profile／Look 查色表', keys: ['Look', 'CameraProfile', 'LookTable', 'RGBTable', 'Table_'], status: 'none', note: '專用編碼或外部 profile，無法解碼'},
+ {label: 'AI 遮色片（主體、天空、背景、人物）', keys: ['Mask/Image'], status: 'none', note: '需要影像辨識模型'},
  {label: '筆刷遮色片、範圍遮色片、組合遮色片', keys: ['PaintBasedCorrections', 'Mask/Paint', 'Mask/RangeMask'], status: 'none'},
  {label: '點顏色、鏡頭模糊、修復', keys: ['PointColors', 'LensBlur', 'RetouchInfo', 'RetouchAreas'], status: 'none'},
- {label: '舊版處理版本的色調欄位', keys: ['Exposure', 'Brightness', 'Contrast', 'Shadows', 'FillLight', 'HighlightRecovery'], status: 'none', note: 'PV2010 以前；請在 Lightroom 更新處理版本後重新匯出'},
+ {label: '舊版處理版本的色調欄位', keys: ['Exposure', 'Brightness', 'Contrast', 'Shadows', 'FillLight', 'HighlightRecovery'], status: 'none', note: 'PV2010 以前；請以新版處理版本重新匯出預設'},
  {label: '銳利化、雜訊、鏡頭校正、裁切、幾何', keys: ['Sharpness', 'LuminanceSmoothing', 'ColorNoiseReduction', 'LensProfileEnable', 'CropTop', 'PerspectiveVertical'], status: 'skip', note: '不屬於調色，匯入時略過且不提示'}
 ];
 const DEFAULTS = {ColorGradeBlending: 50, ParametricShadowSplit: 25, ParametricMidtoneSplit: 50, ParametricHighlightSplit: 75, GrainSize: 25, Brightness: 50, Contrast: 25, Shadows: 5};
@@ -89,7 +89,7 @@ export function parseXmp(text) {
  else if (raw.CameraProfile && !STOCK_PROFILE.test(raw.CameraProfile) && !/^Camera /i.test(raw.CameraProfile)) flags.profile = raw.CameraProfile;
  const embeddedTable = /crs:(RGBTable|LookTable)\s*=|<crs:(RGBTable|LookTable)>|crs:Table_[0-9A-F]{8}/.test(text);
  if (flags.profile) ignored.set(FIELD.get('Look').label, `依賴 profile「${flags.profile}」${embeddedTable ? '（內嵌查色表未解碼）' : '（需另外安裝）'}`);
- else if (embeddedTable) {flags.profile = '內嵌查色表'; ignored.set(FIELD.get('Look').label, '內嵌 Adobe 查色表未解碼');}
+ else if (embeddedTable) {flags.profile = '內嵌查色表'; ignored.set(FIELD.get('Look').label, '內嵌查色表未解碼');}
 
  const hslOn = COLOURS.some(c => ['Hue', 'Saturation', 'Luminance'].some(p => active(p + 'Adjustment' + c)));
  const grade = {
