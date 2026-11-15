@@ -41,10 +41,10 @@ export const LOOKS = [
     tone: {contrast: .95, pivot: .4, black: .034, white: .99, knee: .77},
     // From the Vintage Cinema presets: whites roll off softly, shadows carry a little blue while highlights stay cream,
     // foliage is calmer than skin, and softness comes from luminance diffusion rather than blur.
-    print: [[0, 1, 1], [0, 1, 1], [.012, 1, .985]], localClarity: -.3,
+    print: [[0, 1, 1], [0, 1, 1], [.012, 1, .985]], localClarity: -.1, detail: .08,
     skin: .75, clarity: .22, soft: .5, // diffusion over the scene, film grain in the air, the person stays crisp
     vignette: .04,
-    grain: {amount: .055, size: 1.7}, glow: {halation: .14, bloom: .5, hue: 30}
+    grain: {amount: .03, size: 1.2}, glow: {halation: .12, bloom: .3, hue: 30}
   }
 ];
 

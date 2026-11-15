@@ -101,8 +101,9 @@ void main(){
  // Light emphasis: large-scale dodge and burn against a blurred copy of the scene; gentler on faces.
  if(indoor>0.){float y=lum(c);c*=1.+indoor*.55*(1.-smoothstep(0.,.22,y));} // fill light in the shadows
  if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}
- // Soft focus (diffusion filter): low-frequency light spreads over the frame while detail stays sharp underneath; people keep most of their crispness.
- if(soft>0.){vec3 mist=texture(baseTex,uv).rgb;c+=max(mist-c,vec3(0.))*soft*(1.-.65*skin)+(mist-c)*soft*.18*(1.-skin);}
+ // Soft focus (diffusion filter): only bright surroundings (windows, curtains, lamps) spread light, and only a little.
+ // Detail underneath is never blended away, and dark objects next to a bright wall keep a clean edge instead of a fog halo.
+ if(soft>0.){vec3 mist=texture(baseTex,uv).rgb;float bright=smoothstep(.35,1.,lum(mist)),keep=smoothstep(.004,.06,lum(c));c+=max(mist-c,vec3(0.))*soft*.22*bright*keep*(1.-.65*skin);}
  // Approximate XMP luminance-range negative clarity. Reduce local luminance
  // contrast rather than blurring RGB edges; retain high-frequency texture.
  if(localClarity<0.){float y=lum(c), by=lum(texture(baseTex,uv).rgb);float m=smoothstep(0.,max(.01,localClarityLow),lum(encode(c)));float target=mix(y,by,-localClarity*.38*m*(1.-.4*skin));c*=clamp((target+.001)/(y+.001),.7,1.4);}
