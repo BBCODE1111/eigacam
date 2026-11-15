@@ -4,6 +4,8 @@
 
 開啟：https://bbcode1111.github.io/eigacam/ （可在手機瀏覽器「加入主畫面」）
 
+**EIGASTUDIO**（照片調色工作室：整包匯入 Lightroom 預設與 LUT、挑色、遮色片）在 `dist/eigastudio/`，說明見 [docs/eigastudio.md](docs/eigastudio.md)。
+
 ![直式相機介面](docs/camera-portrait.jpg)
 
 ## 拍攝

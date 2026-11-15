@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#0b0b0c"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="EIGASTUDIO"><meta name="description" content="照片調色工作室：整包匯入 Lightroom 預設與 LUT，用自己的照片挑色、調整、局部修飾。">
+<title>EIGASTUDIO · 照片調色工作室</title>
+<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="../icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="../assets/icon-192.png"><link rel="stylesheet" href="./src/style.css"></head>
+<body data-tab="styles">
+<div class="app">
+ <header class="top">
+  <div class="brand">EIGA<b>STUDIO</b></div>
+  <nav class="mode" aria-label="切換 CAM／STUDIO"><a href="../" id="toCam">CAM</a><span aria-current="page">STUDIO</span></nav>
+  <div class="top-actions">
+   <button id="undo" class="icon" aria-label="復原" title="復原" disabled>↶</button>
+   <button id="redo" class="icon" aria-label="重做" title="重做" disabled>↷</button>
+   <button id="compare" class="chip" title="按住顯示原圖（鍵盤 \）" disabled>原圖</button>
+   <button id="openPhoto" class="chip">照片</button>
+   <button id="importBtn" class="chip">匯入<span class="long">風格</span></button>
+   <button id="exportBtn" class="chip primary" disabled>儲存</button>
+   <button id="menuBtn" class="icon" aria-label="更多">⋯</button>
+  </div>
+ </header>
+
+ <section id="pane-styles" class="pane" aria-label="風格庫">
+  <div class="row strength"><label for="strength">強度</label><input id="strength" type="range" min="0" max="100" step="1" value="100"><output id="strengthOut">100%</output></div>
+  <div class="row filters">
+   <input id="search" type="search" placeholder="搜尋風格名稱" aria-label="搜尋風格名稱" enterkeyhint="search">
+   <select id="packFilter" aria-label="依風格包篩選"></select>
+   <button id="favOnly" class="chip" aria-pressed="false" title="只看收藏">★</button>
+  </div>
+  <div id="styleInfo" class="style-info"></div>
+  <div id="styleGrid" class="grid" role="listbox" aria-label="風格"></div>
+ </section>
+
+ <section id="stage" class="stage" aria-label="照片">
+  <div id="view" class="view" hidden><canvas id="canvas"></canvas><svg id="handles" class="handles"></svg></div>
+  <div id="brushCursor" class="brush-cursor" hidden></div>
+  <div id="empty" class="empty">
+   <h1>用自己的照片挑顏色</h1>
+   <p>選一張 JPEG 或 PNG，再匯入整包 Lightroom 預設、.cube LUT 或 ZIP。全部在這台裝置上運算。</p>
+   <div class="empty-actions"><button id="emptyOpen" class="chip primary big">選一張照片</button><button id="emptySample" class="chip big">用範例照片試試</button></div>
+  </div>
+  <div id="zoomBadge" class="zoom-badge" hidden></div>
+  <div id="dropHint" class="drop-hint" hidden>放開以匯入</div>
+  <div id="busy" class="busy" hidden><span></span><b id="busyText">處理中</b></div>
+ </section>
+
+ <nav class="tabs" role="tablist">
+  <button data-tab="styles" role="tab">風格</button><button data-tab="adjust" role="tab">調整</button><button data-tab="masks" role="tab">遮色片</button>
+ </nav>
+
+ <section id="pane-adjust" class="pane" aria-label="全圖調整">
+  <div id="adjustSliders"></div>
+  <div class="curve-box">
+   <div class="row curve-head"><b>曲線</b><span id="curveChannels" class="seg"><button data-ch="m" aria-pressed="true">亮度</button><button data-ch="r">紅</button><button data-ch="g">綠</button><button data-ch="b">藍</button></span><button id="curveReset" class="link">重設</button></div>
+   <svg id="curve" class="curve" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+   <p class="hint">點一下加節點，拖曳調整；把節點拖出框外可刪除。</p>
+  </div>
+  <button id="adjustReset" class="chip wide">全部重設</button>
+ </section>
+
+ <section id="pane-masks" class="pane" aria-label="遮色片">
+  <div class="row add-mask"><button data-add="brush" class="chip">＋ 筆刷</button><button data-add="linear" class="chip">＋ 線性漸層</button><button data-add="radial" class="chip">＋ 放射漸層</button></div>
+  <div id="maskList" class="mask-list" role="listbox" aria-label="遮色片"></div>
+  <div id="maskEditor" hidden>
+   <div class="row mask-tools">
+    <span id="brushMode" class="seg"><button data-mode="paint" aria-pressed="true">筆刷</button><button data-mode="erase">橡皮擦</button></span>
+    <button id="maskOverlay" class="chip" aria-pressed="true">顯示範圍</button>
+    <button id="maskInvert" class="chip" aria-pressed="false">反轉</button>
+    <button id="maskEnable" class="chip" aria-pressed="true">啟用</button>
+    <button id="maskDelete" class="chip danger">刪除</button>
+   </div>
+   <div id="maskSliders"></div>
+  </div>
+  <p id="maskHint" class="hint">新增遮色片後，只有選到的區域會套用下面的曝光、色溫與飽和度。筆刷模式下，雙指可以縮放與移動照片。</p>
+ </section>
+</div>
+
+<dialog id="importDlg" class="dlg"><form method="dialog">
+ <h2 id="importTitle">匯入風格</h2>
+ <div class="progress"><i id="importBar"></i></div>
+ <p id="importNow" class="hint"></p>
+ <div id="importCounts" class="counts"></div>
+ <div id="importPacks"></div>
+ <div id="importItems" class="items"></div>
+ <div class="dlg-actions"><button id="importClose" class="chip primary" disabled>完成</button></div>
+</form></dialog>
+
+<dialog id="menuDlg" class="dlg"><form method="dialog">
+ <h2>更多</h2>
+ <div class="menu">
+  <button data-act="batch" type="button">批次調色：把目前的風格與調整套到多張照片</button>
+  <button data-act="folder" type="button" class="desktop-only">匯入整個資料夾的風格</button>
+  <button data-act="backup" type="button">匯出風格庫（一個 ZIP，可帶到別的裝置）</button>
+  <button data-act="restore" type="button">還原風格庫（選擇匯出的 ZIP）</button>
+  <button data-act="compat" type="button">格式相容表</button>
+  <button data-act="install" type="button" id="installBtn" hidden>安裝到主畫面</button>
+  <button data-act="deletePack" type="button" class="danger" id="deletePackBtn" hidden></button>
+  <button data-act="clear" type="button" class="danger">清空匯入的風格庫</button>
+ </div>
+ <p id="storageInfo" class="hint"></p>
+ <div class="dlg-actions"><button class="chip">關閉</button></div>
+</form></dialog>
+
+<dialog id="exportDlg" class="dlg"><form method="dialog">
+ <h2 id="exportTitle">照片已完成</h2>
+ <img id="exportPreview" alt="輸出預覽">
+ <div class="progress" id="exportProgress" hidden><i id="exportBar"></i></div>
+ <p id="exportInfo" class="hint"></p>
+ <div class="dlg-actions"><button id="exportShare" type="button" class="chip primary">分享／儲存到相簿</button><button id="exportDownload" type="button" class="chip">下載</button><button class="chip">關閉</button></div>
+</form></dialog>
+
+<dialog id="compatDlg" class="dlg wide"><form method="dialog"><h2>格式相容表</h2><div id="compatBody"></div><div class="dlg-actions"><button class="chip primary">關閉</button></div></form></dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input id="photoInput" type="file" accept="image/jpeg,image/png,image/*" hidden>
+<input id="styleInput" type="file" multiple hidden>
+<input id="folderInput" type="file" webkitdirectory multiple hidden>
+<input id="batchInput" type="file" accept="image/jpeg,image/png,image/*" multiple hidden>
+<script type="module" src="./src/app.js"></script>
+</body></html>

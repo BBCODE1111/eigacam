@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "serve": "python3 -m http.server 8766",
+    "studio:pack": "node tests/studio-fixtures.mjs eigastudio-test-pack.zip",
+    "studio:e2e": "node tests/studio-e2e.mjs"
   }
 }
