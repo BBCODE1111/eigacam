@@ -81,9 +81,9 @@ LOOKS.push(
   shadows: [45, .022], highlights: [80, .02],
   tone: {contrast: 1.1, pivot: .45, black: .018, white: .985, knee: .7},
   print: [[.008, 1, 1], [.003, 1.01, .99], [0, 1.05, .93]],
-  vignette: .2, skin: .6, clarity: .3, soft: .55, localClarity: -.3,
+  vignette: .2, skin: .6, clarity: .3, soft: .55, localClarity: -.1, detail: .08,
   masks: [createMask('luma', {name: '燈光暈', lo: 72, hi: 100, feather: 14, adj: {hue: 40, amount: 18}})],
-  grain: {amount: .065, size: 1.8}, glow: {halation: .4, bloom: .45, hue: 30}
+  grain: {amount: .035, size: 1.25}, glow: {halation: .3, bloom: .3, hue: 30}
  }
 );
 

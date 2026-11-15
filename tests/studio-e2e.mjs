@@ -125,24 +125,25 @@ const thumbHashes = p => p.evaluate(() => Object.fromEntries(eigastudio.tiles.fi
 
  // --- eigacam recipe parity: Studio vs the camera app's own renderer ---
  const parity = await p.evaluate(async () => {
-  const {Renderer} = await import('../src/engine/renderer.js'), {bakeLook} = await import('../src/color.js'), {LOOKS} = await import('../src/looks.js');
+  const {Renderer} = await import('../src/engine/renderer.js'), {bakeLook} = await import('../src/color.js'), {LOOKS} = await import('../src/looks.js'), {renderSettings} = await import('../src/develop.js');
   const img = await createImageBitmap(await (await fetch('../assets/cafe.jpg')).blob()), src = document.createElement('canvas'); src.width = 480; src.height = Math.round(480 * img.height / img.width); src.getContext('2d').drawImage(img, 0, 0, src.width, src.height);
   const out = {};
-  for (const id of ['loveletter-snow', 'transformer', 'neonrain']) {
+  for (const id of ['loveletter', 'loveletter-library', 'loveletter-snow', 'nightcity', 'transformer', 'neonrain']) {
    const look = LOOKS.find(l => l.id === id), cam = new Renderer(document.createElement('canvas'));
    cam.setSource(src, src.width, src.height); cam.setLUT(bakeLook(look)); cam.resize(src.width, src.height);
-   cam.render({strength: 1, masks: look.masks ?? [], vignette: look.vignette ?? .12, grain: 0, halation: 0, bloom: 0, sharpen: 0, beauty: 0, skinKeep: 0});
+   // The camera with its dials at their defaults (beauty off, no grain so the noise does not dominate the comparison): every look effect is on.
+   cam.render(renderSettings(look, {ev: 0, strength: 100, grain: 0, glow: look.glowDefault ?? 100, sharpen: 35, warmth: 0, beauty: 0}));
    const t = eigastudio.thumbR; t.setSource('parity', src, src.width, src.height);
    const style = await eigastudio.compile(eigastudio.styleById('cam:' + id), 33);
    t.render({source: 'parity', width: src.width, height: src.height, style: {...style, grain: {amount: 0}}, strength: 1, curve: false});
    const read = c => {const x = document.createElement('canvas'); x.width = c.width; x.height = c.height; const g = x.getContext('2d'); g.drawImage(c, 0, 0); return g.getImageData(0, 0, c.width, c.height).data;};
-   const a = read(cam.canvas), b = read(t.canvas); let max = 0, sum = 0; for (let i = 0; i < a.length; i++) {const d = Math.abs(a[i] - b[i]); max = Math.max(max, d); sum += d;}
-   out[id] = [max, +(sum / a.length).toFixed(3)]; t.dropSource('parity'); cam.destroy();
+   const a = read(cam.canvas), b = read(t.canvas); let max = 0, sum = 0, big = 0; for (let i = 0; i < a.length; i++) {if ((i & 3) === 3) continue; const d = Math.abs(a[i] - b[i]); max = Math.max(max, d); sum += d; if (d > 3) big++;}
+   out[id] = [max, +(sum / (a.length * .75)).toFixed(3), +(big / (a.length * .75) * 100).toFixed(3)]; t.dropSource('parity'); cam.destroy();
   }
   return out;
  });
- for (const [id, [max]] of Object.entries(parity)) assert.ok(max <= 2, `${id} differs by ${max}`);
- pass('eigacam 配方相容', `與 CAM 自己的著色器逐像素比對（關閉 CAM 專用效果）：${Object.entries(parity).map(([k, v]) => `${k} 最大差 ${v[0]}/255`).join('、')}`);
+ for (const [id, [, mean, big]] of Object.entries(parity)) assert.ok(mean < .8 && big < .5, `${id} differs: mean ${mean}, ${big}% of values by more than 3`);
+ pass('CAM 與 Studio 畫面一致', `同一張照片、同一個 eigacam 色彩，含柔焦、光暈、銳利化、膚色保護：${Object.entries(parity).map(([k, v]) => `${k} 平均差 ${v[1]}/255（差超過 3 的 ${v[2]}%）`).join('、')}`);
 
  // --- face: +0.5 EV with a brush, background untouched ---
  await setPhoto(p, 'portrait.jpg'); await pick(p, '');

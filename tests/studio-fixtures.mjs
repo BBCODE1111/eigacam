@@ -45,9 +45,9 @@ export function buildPack() {
  add('LUT/特殊/SLog3_to_Rec709.cube', cube(9, (r, g, b) => [r, g, b].map(v => Math.min(1, Math.max(0, (v - .09) * 2.2)))), 'ok', {log: true});
  add('LUT/特殊/Kodak 2383 (LogC).cube', cube(9, (r, g, b) => [r * .98, g, b * .95], {title: 'ARRI LogC to Rec709'}), 'ok', {log: true});
  // 3 eigacam recipes in the project's own format; one file holds two.
- add('eigacam/情書・雪.json', JSON.stringify(LOOKS.find(l => l.id === 'loveletter-snow')), 'partial');
- add('eigacam/Transformer.json', JSON.stringify(LOOKS.find(l => l.id === 'transformer')), 'partial');
- add('eigacam/我的配方.json', JSON.stringify([{id: 'r1', name: '青橙＋壓暗天空', base: 'transformer', masks: [{type: 'linear', name: '天空', x0: .5, y0: 0, x1: .5, y1: .5, adj: {ev: -.6, sat: 10}}]}]), 'partial');
+ add('eigacam/情書・雪.json', JSON.stringify(LOOKS.find(l => l.id === 'loveletter-snow')), 'ok');
+ add('eigacam/Transformer.json', JSON.stringify(LOOKS.find(l => l.id === 'transformer')), 'ok');
+ add('eigacam/我的配方.json', JSON.stringify([{id: 'r1', name: '青橙＋壓暗天空', base: 'transformer', masks: [{type: 'linear', name: '天空', x0: .5, y0: 0, x1: .5, y1: .5, adj: {ev: -.6, sat: 10}}]}]), 'ok');
  // Partially supported presets.
  add('部分支援/清晰度與紋理.xmp', preset('清晰度與紋理', {Contrast2012: 20, Clarity2012: 35, Texture: 20}), 'partial');
  add('部分支援/AI 主體遮色片.xmp', preset('AI 主體遮色片', {Exposure2012: .3, Vibrance: 20}, aiMask), 'partial');

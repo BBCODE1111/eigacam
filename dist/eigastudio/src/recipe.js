@@ -5,8 +5,8 @@
 import {LOOKS} from '../../src/looks.js';
 import {bakeLook} from '../../src/color.js';
 import {sanitizeMasks} from '../../src/masks.js';
+import {renderSettings} from '../../src/develop.js';
 
-const CAM_ONLY = [['glow', '光暈'], ['soft', '柔焦'], ['skin', '膚色獨立渲染'], ['clarity', '光影強調'], ['localClarity', '局部柔化'], ['detail', '銳利化']];
 const isLook = o => o && typeof o === 'object' && (o.lr || o.tone || o.hues || o.gain || o.print || o.mono);
 const isRecipe = o => o && typeof o === 'object' && typeof o.base === 'string' && Array.isArray(o.masks);
 const num = v => typeof v === 'number' && Number.isFinite(v);
@@ -36,12 +36,15 @@ export function resolveDef(def) {
 // → {name, compile(size)} with notes about camera-only features Studio leaves out.
 export function describeLook(def) {
  const look = resolveDef(def); checkLook(look);
- const left = CAM_ONLY.filter(([k]) => k === 'glow' ? (look.glow?.halation || look.glow?.bloom) : look[k]).map(x => x[1]);
- return {name: String(look.name ?? look.id ?? 'eigacam 配方').slice(0, 60), notes: left.length ? [`CAM 專用效果不套用：${left.join('、')}（Studio 套用色彩、遮色片、暗角與顆粒）`] : [], partial: left.length > 0};
+ return {name: String(look.name ?? look.id ?? 'eigacam 配方').slice(0, 60), notes: [], partial: false};
 }
 export function compileLook(def, size = 33) {
  const look = resolveDef(def);
- return {lut: bakeLook(look, size), masks: sanitizeMasks(look.masks ?? []), vignette: Math.min(.6, Math.max(0, Number(look.vignette ?? .12) || 0)), grain: {amount: Math.min(.2, Math.max(0, Number(look.grain?.amount) || 0)), size: Math.min(4, Math.max(.5, Number(look.grain?.size) || 1.5))}};
+ // Same settings the camera uses with its dials at their defaults (glow at the look's own default, no beauty smoothing).
+ const s = renderSettings(look, {ev: 0, strength: 100, grain: 100, glow: look.glowDefault ?? 100, sharpen: 35, warmth: 0, beauty: 0});
+ const n = (v, lo, hi) => Math.min(hi, Math.max(lo, Number(v) || 0));
+ const fx = {sharpen: n(s.sharpen, 0, 1), clarity: n(s.clarity, 0, 1), soft: n(s.soft, 0, 1.5), localClarity: n(s.localClarity, -1, 0), localClarityLow: n(s.localClarityLow, .05, 1) || .595, halation: n(s.halation, 0, 2), bloom: n(s.bloom, 0, 2), glowHue: n(s.glowHue, 0, 360), glowSat: n(s.glowSat ?? .55, 0, 1), skinKeep: n(s.skinKeep, 0, 1)};
+ return {lut: bakeLook(look, size), masks: sanitizeMasks(look.masks ?? []), vignette: n(s.vignette, 0, .6), grain: {amount: n(s.grain, 0, .2), size: n(s.grainSize, .5, 4) || 1.5}, fx};
 }
 
 export function parseRecipeFile(text) {
