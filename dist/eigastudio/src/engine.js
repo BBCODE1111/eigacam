@@ -11,7 +11,8 @@ void main(){uv=position*.5+.5;gl_Position=vec4(position,0.,1.);}`;
 const fragment = `#version 300 es
 precision highp float;precision highp int;precision highp sampler3D;precision highp sampler2DArray;
 in vec2 uv;out vec4 frag;
-uniform sampler2D src,curveTex;uniform sampler3D lut;uniform sampler2DArray brushTex;
+uniform sampler2D src,curveTex,nearTex,farTex,baseTex;uniform int op;uniform vec2 direction;uniform float threshold;uniform vec3 glowTint;
+uniform float sharpen,clarity,soft,localClarity,localClarityLow,halation,bloom,skinKeep;uniform sampler3D lut;uniform sampler2DArray brushTex;
 uniform vec2 outSize;uniform float srcAspect,bypass,strength,lutOn,lutSize,lutDisplay,curveOn;
 uniform vec3 domainMin,domainMax,gain,overlayColor;
 uniform float contrast,highlights,shadows,saturation,vignette,grainAmount,grainSize;
@@ -52,13 +53,24 @@ vec3 lookup(vec3 lin){
  s=clamp(s,0.,1.)*(lutSize-1.)/lutSize+.5/lutSize;
  return texture(lut,s).rgb;
 }
+vec3 scene(vec2 t){return decode(texture(src,t).rgb)*gain;}
+// Skin likelihood from the YCbCr skin cluster (same as the camera).
+float skinMask(vec3 lin){
+ vec3 p=clamp(encode(lin),0.,1.)*255.;float y=dot(p,vec3(.299,.587,.114));
+ float cb=128.-.168736*p.r-.331264*p.g+.5*p.b,cr=128.+.5*p.r-.418688*p.g-.081312*p.b;
+ float e=length(vec2((cb-109.)/18.,(cr-152.)/16.));
+ return (1.-smoothstep(.65,1.2,e))*smoothstep(30.,70.,y)*(1.-smoothstep(240.,254.,y));
+}
 float enc1(float x){return x<=.0031308?x*12.92:1.055*pow(x,1./2.4)-.055;}
 float dec1(float x){return x<=.04045?x/12.92:pow((x+.055)/1.055,2.4);}
 void main(){
+ // op 1: highlight energy (threshold −5 keeps the whole scene) · op 2: separable blur. Same passes as the camera.
+ if(op==1){vec3 c=scene(uv);float l=max(lum(c),max(c.r,max(c.g,c.b))*.8);frag=vec4(c*smoothstep(threshold-.18,threshold+.25,l),1.);return;}
+ if(op==2){vec3 sum=vec3(0.);float total=0.;for(int i=-6;i<=6;i++){float w=exp(-float(i*i)/18.);sum+=texture(src,uv+direction*float(i)/6.).rgb*w;total+=w;}frag=vec4(sum/total,1.);return;}
  vec2 img=vec2(uv.x,1.-uv.y);
  vec4 s=texture(src,uv);
  if(bypass>.5){frag=vec4(s.rgb,1.);return;}
- vec3 c=decode(s.rgb)*gain;
+ vec3 c=decode(s.rgb)*gain,raw=c;float skin=skinKeep>0.||clarity>0.||soft>0.||localClarity<0.?skinMask(raw):0.;
  if(contrast!=0.||highlights!=0.||shadows!=0.){ // tone on display luminance, applied as a ratio so hue holds
   float y0=lum(c),Y=clamp(enc1(y0),0.,1.),Y0=Y;float k=1.+contrast*.5;
   Y=Y<.5?.5*pow(Y/.5,k):1.-.5*pow((1.-Y)/.5,k);
@@ -67,12 +79,22 @@ void main(){
  }
  if(saturation!=0.){float y=lum(c);c=max(mix(vec3(y),c,1.+saturation),0.);}
  if(curveOn>.5){vec3 d=clamp(encode(c),0.,1.)*(255./256.)+.5/256.;c=decode(vec3(texture(curveTex,vec2(d.r,.5)).r,texture(curveTex,vec2(d.g,.5)).g,texture(curveTex,vec2(d.b,.5)).b));}
+ if(sharpen>0.){ // luminance-only unsharp mask on a one-pixel cross, soft-limited so edges never ring
+  vec2 px=1./outSize;vec3 n=(scene(uv+vec2(px.x,0.))+scene(uv-vec2(px.x,0.))+scene(uv+vec2(0.,px.y))+scene(uv-vec2(0.,px.y)))*.25;
+  float L=sqrt(max(lum(raw),0.)),N=sqrt(max(lum(n),0.)),d=L-N;d=d/(1.+abs(d)*6.);float sL=max(L+sharpen*1.6*d,0.);c*=sL*sL/max(L*L,1e-6);
+ }
  vec3 base=c;float shown=0.;
  for(int i=0;i<${MAX_SLOTS};i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m*mA[i].w,i);if(i==maskView-1)shown=m;}
+ // Light emphasis, soft focus and local softening: the camera's look effects, against a blurred copy of the scene.
+ if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}
+ if(soft>0.){vec3 mist=texture(baseTex,uv).rgb;float bright=smoothstep(.35,1.,lum(mist)),keep=smoothstep(.004,.06,lum(c));c+=max(mist-c,vec3(0.))*soft*.22*bright*keep*(1.-.65*skin);}
+ if(localClarity<0.){float y=lum(c),by=lum(texture(baseTex,uv).rgb);float m=smoothstep(0.,max(.01,localClarityLow),lum(encode(c)));float target=mix(y,by,-localClarity*.38*m*(1.-.4*skin));c*=clamp((target+.001)/(y+.001),.7,1.4);}
  vec3 neutral=clamp(encode(c),0.,1.);
  vec3 color=neutral;
  if(lutOn>.5){
-  color=mix(neutral,lookup(c),strength);
+  vec3 glow=halation+bloom>0.?texture(nearTex,uv).rgb*halation*glowTint+texture(farTex,uv).rgb*bloom*mix(vec3(1.),glowTint,.4):vec3(0.);
+  color=mix(neutral,lookup(c+glow),strength);
+  if(skinKeep>0.&&skin>.02){vec3 nat=neutral*vec3(1.015,.99,.985);nat=mix(vec3(lum(nat)),nat,.92);color=mix(color,mix(nat,color,.38),skin*skinKeep*strength);}
   vec2 q=uv-.5;q.x*=outSize.x/outSize.y;float r=length(q)/length(vec2(.5*outSize.x/outSize.y,.5));
   color*=1.-vignette*strength*smoothstep(.35,1.05,r);
   if(grainAmount>0.){
@@ -126,7 +148,8 @@ export class StudioRenderer {
   const buf = g.createBuffer(); g.bindBuffer(g.ARRAY_BUFFER, buf); g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
   g.enableVertexAttribArray(0); g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
   this.locs = new Map(); this.sources = new Map(); this.luts = new Map();
-  for (const [name, unit] of [['src', 0], ['lut', 3], ['curveTex', 5], ['brushTex', 6]]) g.uniform1i(this.loc(name), unit);
+  this.floatTargets = !!g.getExtension('EXT_color_buffer_float') || !!g.getExtension('EXT_color_buffer_half_float'); this.targets = null;
+  for (const [name, unit] of [['src', 0], ['nearTex', 1], ['farTex', 2], ['baseTex', 4], ['lut', 3], ['curveTex', 5], ['brushTex', 6]]) g.uniform1i(this.loc(name), unit);
   // Placeholders so every sampler is always complete.
   this.neutralLut = this.makeLut({size: 2, data: new Float32Array([0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1])});
   this.curveTex = this.tex2D(); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, 1, 1, 0, g.RGBA, g.UNSIGNED_BYTE, new Uint8Array(4));
@@ -149,6 +172,30 @@ export class StudioRenderer {
   g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, s.tex);
   g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, true); g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, g.RGBA, g.UNSIGNED_BYTE, image); g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false);
   g.generateMipmap(g.TEXTURE_2D); g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR_MIPMAP_LINEAR);
+ }
+ // Blur buffers for the camera's look effects; sized from the output like the camera does.
+ ensureTargets(width, height) {
+  if (this.targets?.w === width && this.targets?.h === height) return this.targets;
+  const g = this.gl; for (const t of Object.values(this.targets ?? {})) if (t.fb) {g.deleteTexture(t.tex); g.deleteFramebuffer(t.fb);}
+  g.activeTexture(g.TEXTURE7); // allocate on a spare unit so no sampler in use ends up pointing at a render target
+  const near = Math.min(1, 720 / Math.max(width, height), .5), far = Math.min(1, 160 / Math.max(width, height));
+  const make = s => {
+   const w = Math.max(1, Math.round(width * s)), h = Math.max(1, Math.round(height * s)), tex = this.tex2D();
+   if (this.floatTargets) g.texImage2D(g.TEXTURE_2D, 0, g.RGBA16F, w, h, 0, g.RGBA, g.HALF_FLOAT, null); else g.texImage2D(g.TEXTURE_2D, 0, g.RGBA8, w, h, 0, g.RGBA, g.UNSIGNED_BYTE, null);
+   const fb = g.createFramebuffer(); g.bindFramebuffer(g.FRAMEBUFFER, fb); g.framebufferTexture2D(g.FRAMEBUFFER, g.COLOR_ATTACHMENT0, g.TEXTURE_2D, tex, 0);
+   return {tex, fb, width: w, height: h};
+  };
+  return this.targets = {w: width, h: height, nearA: make(near), nearB: make(near), farA: make(far), farB: make(far), baseA: make(far * 1.6), baseB: make(far * 1.6)};
+ }
+ pass(op, target, input) {
+  const g = this.gl; g.uniform1i(this.loc('op'), op);
+  if (input) {g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, input);}
+  g.bindFramebuffer(g.FRAMEBUFFER, target.fb); g.viewport(0, 0, target.width, target.height); g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+ }
+ blur(a, b, radius, width, height) {
+  const g = this.gl, short = Math.min(width, height);
+  g.uniform2f(this.loc('direction'), radius * short / width, 0); this.pass(2, b, a.tex);
+  g.uniform2f(this.loc('direction'), 0, radius * short / height); this.pass(2, a, b.tex);
  }
  dropSource(key) {const s = this.sources.get(key); if (s) {this.gl.deleteTexture(s.tex); this.sources.delete(key);}}
  makeLut(lut) {
@@ -208,6 +255,21 @@ export class StudioRenderer {
   f('contrast', (adjust.contrast ?? 0) / 100); f('highlights', (adjust.highlights ?? 0) / 100); f('shadows', (adjust.shadows ?? 0) / 100); f('saturation', (adjust.saturation ?? 0) / 100);
   f('curveOn', p.curve !== false && this.hasCurve ? 1 : 0);
   f('vignette', style?.vignette ?? 0); f('grainAmount', style?.grain?.amount ?? 0); f('grainSize', style?.grain?.size ?? 1.5);
+  // Camera look effects (eigacam looks only). Everything but the glow is scaled by strength, so 0% is the untouched photo.
+  const fx = style?.fx, k = strength, glow = fx && (fx.halation + fx.bloom) > 0, base = fx && k > 0 && (fx.clarity > 0 || fx.soft > 0 || fx.localClarity < 0);
+  f('sharpen', (fx?.sharpen ?? 0) * k); f('clarity', (fx?.clarity ?? 0) * k); f('soft', (fx?.soft ?? 0) * k); f('localClarity', (fx?.localClarity ?? 0) * k); f('localClarityLow', fx?.localClarityLow ?? .595);
+  f('halation', glow ? fx.halation : 0); f('bloom', glow ? fx.bloom : 0); f('skinKeep', fx?.skinKeep ?? 0);
+  const hue = (fx?.glowHue ?? 20) / 60, gs = fx?.glowSat ?? .55, tk = n => {const v = (n + hue) % 6; return 1 - gs * Math.max(0, Math.min(v, 4 - v, 1));}, tint = [tk(5), tk(3), tk(1)], tl = .2126 * tint[0] + .7152 * tint[1] + .0722 * tint[2];
+  g.uniform3f(this.loc('glowTint'), ...tint.map(v => v / tl));
+  for (const unit of [1, 2, 4]) {g.activeTexture(g.TEXTURE0 + unit); g.bindTexture(g.TEXTURE_2D, null);} // no feedback loops
+  if (glow || base) {
+   const T = this.ensureTargets(p.width, p.height);
+   if (base) {g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, s.tex); f('threshold', -5); this.pass(1, T.baseA); this.blur(T.baseA, T.baseB, .035, p.width, p.height);}
+   if (glow) {g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, s.tex); f('threshold', .78); this.pass(1, T.nearA); this.blur(T.nearA, T.nearB, .007, p.width, p.height); g.uniform2f(this.loc('direction'), 0, 0); this.pass(2, T.farA, T.nearA.tex); this.blur(T.farA, T.farB, .045, p.width, p.height);}
+   g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, T.nearA.tex); g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, T.farA.tex); g.activeTexture(g.TEXTURE4); g.bindTexture(g.TEXTURE_2D, T.baseA.tex);
+   g.activeTexture(g.TEXTURE0); g.bindTexture(g.TEXTURE_2D, s.tex);
+  }
+  g.uniform1i(this.loc('op'), 0);
   const m = packMasks(style?.masks, p.masks, strength, p.view ?? null);
   g.uniform1i(this.loc('maskCount'), m.count); g.uniform1i(this.loc('maskView'), m.view);
   for (const k of ['a', 'b', 'c', 'd']) g.uniform4fv(this.loc(`m${k.toUpperCase()}[0]`), m[k]);

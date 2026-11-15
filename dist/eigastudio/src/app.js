@@ -556,8 +556,8 @@ function compatTable() {
  <tr><td>LUT_1D_SIZE、其他格式（.3dl、.look）</td><td class="st-none">未支援</td><td></td></tr></table>
  <table><tr><th>eigacam 配方</th><th>狀態</th><th>說明</th></tr>
  <tr><td>色彩模型（gain、hues、tone、print）與 lr 設定</td><td class="st-ok">已實作</td><td>直接使用 CAM 的 color.js 烘焙成同一張 3D LUT</td></tr>
- <tr><td>遮色片（漸層、圓形、明暗、顏色）、暗角、顆粒</td><td class="st-ok">已實作</td><td>與 CAM 相同的著色器運算</td></tr>
- <tr><td>光暈、柔焦、膚色獨立渲染、美肌、光影強調</td><td class="st-none">未支援</td><td>CAM 專用的多重模糊流程</td></tr></table>`;
+ <tr><td>遮色片（漸層、圓形、明暗、顏色）、暗角、顆粒、柔焦、光暈、光影強調、局部柔化、銳利化、膚色保護</td><td class="st-ok">已實作</td><td>與 CAM 相同的設定與著色器運算，CAM 參數轉盤維持預設時兩邊畫面一致</td></tr>
+ <tr><td>美肌、室內模式、拍攝模式</td><td class="st-skip">CAM 專用</td><td>屬於拍攝時的設定，不是色彩本身</td></tr></table>`;
 }
 function initMenu() {
  addEventListener('beforeinstallprompt', e => {e.preventDefault(); installEvent = e; $('installBtn').hidden = false;});

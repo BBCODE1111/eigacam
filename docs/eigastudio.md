@@ -46,7 +46,7 @@ node tests/studio-e2e.mjs          # 瀏覽器驗收（需要 Playwright 與 Chr
 | `dist/src/photo-delivery.js` | 手機系統分享／儲存 |
 | localStorage `eigacam.recipes`、`eigacam.imports` | 在 CAM 存的配方與匯入的 XMP 會自動出現在 Studio（同一網域） |
 
-沒有沿用的部分：CAM 的光暈、柔焦、膚色獨立渲染、美肌需要多重模糊流程，Studio 第一版不做，匯入這類配方時會標示「部分支援」。Studio 的 XMP 調色運算在 `lr.js`，保證所有欄位為 0 時是完全的恆等轉換。
+CAM 的色彩效果（柔焦、光暈、光影強調、局部柔化、銳利化、膚色保護）在 Studio 也套用：兩邊讀同一份 `looks.js`，透過 `develop.js` 的 `renderSettings` 換算成同一組設定，著色器運算相同，所以改一個色彩兩邊會一起變。美肌、室內模式和拍攝模式屬於拍攝設定，只在 CAM。
 
 備註：需求裡提到的 `presets.js`、`model.js`、`curves.js` 在這個專案裡不存在，對應的實際檔案是 `looks.js`、`color.js`（曲線在 `color.js` 的 `pointCurve`）。
 
@@ -121,7 +121,8 @@ XMP 預設多半是為 RAW 設計的；這裡用 EIGASTUDIO 自己的調色運�
 | `looks.js` 的色彩物件（gain、hues、tone、print、shadows、highlights、mono 或 `lr`） | 已實作 | JSON 檔可放單一物件、陣列、`{looks:[…]}` 或 `{recipes:[…]}` |
 | CAM 的使用者配方 `{id, name, base, masks}` | 已實作 | `base` 須是內建色彩的 id |
 | 遮色片（漸層、圓形、明暗、顏色）、暗角、顆粒 | 已實作 | 遮色片強度跟著「強度」滑桿 |
-| 光暈、柔焦、膚色獨立渲染、光影強調、局部柔化、銳利化 | 未支援 | 標示部分支援 |
+| 柔焦、光暈、光影強調、局部柔化、銳利化、膚色保護 | 已實作 | 與 CAM 預設轉盤下的畫面一致（瀏覽器驗收逐像素比對） |
+| 美肌、室內模式、拍攝模式 | CAM 專用 | 拍攝設定，不屬於色彩 |
 
 ## 驗證紀錄
 
