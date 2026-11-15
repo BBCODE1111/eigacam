@@ -564,6 +564,8 @@ const redevelop = guard(async lookId => {
 });
 $('viewerChange').onclick = guard(async () => {const shot = viewing; if (!shot) return; openPicker({current: shot.look, blob: await fileOf(shot.id, 'original'), onPick: redevelop});});
 $('viewerBack').onclick = () => {closeSheet('viewer'); viewing = null;};
+// Fine-tune in Studio: it opens this shot's original with the look and dials it was taken with.
+$('viewerEdit').onclick = () => {if (!viewing) return; if (memoryRoll) {$('viewerStatus').textContent = '這個瀏覽器沒有裝置儲存空間，無法交給 Studio 編輯。'; return;} store.set('eigacam.prefs', prefs); location.href = './eigastudio/?shot=' + encodeURIComponent(viewing.id);};
 $('viewerShare').onclick = async () => {
  if (!viewerFile) return;
  if (!canSharePhoto(viewerFile)) {download(viewerFile, viewerFile.name); $('viewerStatus').textContent = '此瀏覽器不能分享照片，已下載檔案。'; return;}

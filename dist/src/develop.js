@@ -29,8 +29,11 @@ export async function develop(blob, {lut, settings, ratio}) {
  const r = exporter();
  const decoded = await decodeImage(blob, r.maxEdge, r.maxPixels);
  try {
-  const crop = cropFor(decoded.width, decoded.height, ratio);
+  let crop = cropFor(decoded.width, decoded.height, ratio);
   const size = outputSize(decoded.width, decoded.height, crop, r.maxEdge, r.maxPixels);
+  // At full size, snap the cinema crop to whole pixels so every output pixel is exactly one source pixel (no resampling softness).
+  const W = decoded.width, H = decoded.height;
+  if (Math.abs(size.width - W * crop.w) < 1 && Math.abs(size.height - H * crop.h) < 1) crop = {x: Math.round(crop.x * W) / W, y: Math.round(crop.y * H) / H, w: size.width / W, h: size.height / H};
   r.setSource(decoded.image, decoded.width, decoded.height); r.setLUT(lut); r.resize(size.width, size.height);
   r.render({...settings, crop});
   const jpeg = await canvasBlob(r.canvas, 'image/jpeg', .94);

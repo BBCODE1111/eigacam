@@ -210,6 +210,47 @@ const thumbHashes = p => p.evaluate(() => Object.fromEntries(eigastudio.tiles.fi
  await ctx.close();
 }
 
+// ============ CAM film roll → Studio ============
+{
+ const ctx = await browser.newContext({viewport: {width: 1280, height: 860}});
+ let p = await open(ctx);
+ const dials = {ev: .3, strength: 70, hi: 0, sh: 0, warmth: 20, grain: 0, glow: 60, sharpen: 35, beauty: 40};
+ // A shot the way the camera stores it: original, developed JPEG and the settings it was taken with (2.39 frame, one radial mask).
+ const id = await p.evaluate(async dials => {
+  const {addShot} = await import('../src/roll.js'), {develop, renderSettings} = await import('../src/develop.js'), {bakeLook} = await import('../src/color.js'), {LOOKS} = await import('../src/looks.js'), {createMask} = await import('../src/masks.js');
+  const look = LOOKS.find(l => l.id === 'loveletter'), blob = await (await fetch('../assets/portrait.jpg')).blob(), masks = [createMask('radial', {cx: .5, cy: .35, rx: .2, ry: .15, adj: {ev: .5}})];
+  const out = await develop(blob, {lut: bakeLook(look), ratio: 2.39, settings: renderSettings(look, dials, {masks})});
+  const shot = {id: 'e2e' + Date.now(), created: Date.now(), look: 'loveletter', lookName: look.name, dials, ratio: 2.39, mirror: false, masks, width: out.width, height: out.height, thumb: out.thumb};
+  await addShot(shot, blob, out.jpeg); return shot.id;
+ }, dials);
+ // Open it from the camera's own photo page.
+ const cam = await ctx.newPage(); cam.on('pageerror', e => {console.log('CAM PAGE ERROR', e.message); process.exitCode = 1;});
+ await cam.goto(URL0.replace(/eigastudio\/?$/, '')); await cam.waitForTimeout(1200);
+ await cam.click('#rollButton'); await cam.click(`.cell[data-id="${id}"]`); await cam.waitForSelector('#viewer:not([hidden])');
+ await Promise.all([cam.waitForURL(/eigastudio/), cam.click('#viewerEdit')]);
+ await cam.waitForSelector('body[data-ready]'); await idle(cam);
+ const st = await cam.evaluate(() => ({style: eigastudio.state.styleId, name: eigastudio.styleById(eigastudio.state.styleId)?.name, strength: eigastudio.state.strength, adjust: eigastudio.state.adjust, w: eigastudio.photo.width, h: eigastudio.photo.height, url: location.search}));
+ assert.equal(st.style, 'shot:' + id); assert.equal(st.strength, 70); assert.equal(st.adjust.exposure, .3); assert.equal(st.adjust.temp, 21); assert.equal(st.url, '');
+ assert.ok(Math.abs(st.w / st.h - 1 / 2.39) < .01, 'cinema frame applied');
+ await cam.screenshot({path: SHOTS + 'cam-to-studio.jpg', type: 'jpeg', quality: 78});
+ // Studio's export against the camera's developed JPEG.
+ const cmp = await cam.evaluate(async id => {
+  const {getFile} = await import('../src/roll.js'), dev = await getFile(id, 'developed'), r = await eigastudio.renderFull(eigastudio.photo.blob, {masks: eigastudio.renderMasks(), brush: true});
+  // Both sides are JPEGs; compare at a quarter of the size so compression noise does not dominate.
+  const px = async b => {const im = await createImageBitmap(b), c = document.createElement('canvas'); c.width = Math.round(im.width / 4); c.height = Math.round(im.height / 4); const g = c.getContext('2d'); g.drawImage(im, 0, 0, c.width, c.height); return g.getImageData(0, 0, c.width, c.height).data;};
+  const a = await px(dev), b = await px(r.jpeg); let sum = 0, n = 0, big = 0; for (let i = 0; i < a.length; i++) {if ((i & 3) === 3) continue; const d = Math.abs(a[i] - b[i]); sum += d; n++; if (d > 8) big++;}
+  return {mean: +(sum / n).toFixed(2), big: +(big / n * 100).toFixed(2), size: [r.width, r.height]};
+ }, id);
+ assert.ok(cmp.mean < 1.5 && cmp.big < .5, `CAM vs Studio export: ${JSON.stringify(cmp)}`);
+ pass('底片盒 → Studio 編輯', `CAM 照片頁按「編輯」→ Studio 以原始檔打開，帶入 情書（拍攝設定）、濃度 70%、曝光 +0.3、色溫 +21、美肌 40、2.39 畫幅與遮色片；Studio 輸出 ${cmp.size.join('×')} 與 CAM 沖印的 JPEG 平均差 ${cmp.mean}/255（差超過 8 的 ${cmp.big}%）`);
+ // Reloading keeps the shot's look; a new photo drops it.
+ await cam.waitForTimeout(800); await cam.reload(); await cam.waitForSelector('body[data-ready]'); await idle(cam);
+ assert.equal(await cam.evaluate(() => eigastudio.state.styleId), 'shot:' + id);
+ await setPhoto(cam, 'street.jpg'); assert.equal(await cam.evaluate(() => eigastudio.allStyles().some(s => s.id.startsWith('shot:'))), false);
+ pass('重開與換照片', '重新整理後仍套用拍攝設定；換成別張照片後拍攝設定風格移除，CAM 內建色彩照常可選');
+ await ctx.close();
+}
+
 // ============ phone-sized viewport with touch (emulation, not a real phone) ============
 {
  const ctx = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2, hasTouch: true, isMobile: true, acceptDownloads: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'});

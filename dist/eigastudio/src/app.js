@@ -5,7 +5,8 @@ import {parseXmp, XMP_FIELDS} from './xmp.js';
 import {parseCube} from './cube.js';
 import {bakeGrade} from './lr.js';
 import {compileLook, parseRecipeFile, describeLook, BUILTIN} from './recipe.js';
-import {pointCurve} from '../../src/color.js';
+import {pointCurve, cropFor} from '../../src/color.js';
+import {sanitizeMasks} from '../../src/masks.js';
 import {decodeImage, release, canvasBlob, download} from '../../src/files.js';
 import {canSharePhoto, sharePhoto} from '../../src/photo-delivery.js';
 import {zipSync, deflateSync, inflateSync} from '../vendor/fflate.js';
@@ -42,8 +43,8 @@ function camStyles() {
  } catch {}
  return out;
 }
-let virtual = [];
-const allStyles = () => [...lib.styles, ...virtual];
+let virtual = [], shotStyles = [];
+const allStyles = () => [...shotStyles, ...lib.styles, ...virtual];
 const styleById = id => id ? allStyles().find(s => s.id === id) : null;
 
 const compiled = new Map();
@@ -54,7 +55,8 @@ async function compile(style, size) {
  const text = style.text ?? (style.def ? null : decodeText(await lib.source(style.hash)));
  if (style.kind === 'xmp') {const x = parseXmp(text); c = {lut: bakeGrade(x.grade, size), masks: x.masks.map((m, i) => ({...m, id: 's' + i})), vignette: x.vignette, grain: x.grain};}
  else if (style.kind === 'cube') c = {lut: parseCube(text, style.file).lut, masks: [], vignette: 0, grain: {amount: 0, size: 1.5}};
- else c = compileLook(style.def ?? parseRecipeFile(text)[style.sub ?? 0], size);
+ else c = compileLook(style.def ?? parseRecipeFile(text)[style.sub ?? 0], size, style.dials);
+ if (style.dials) c = {...c, camStrength: true, ...(style.shotMasks ? {masks: sanitizeMasks(style.shotMasks).map((m, i) => ({...m, id: 'k' + i, full: true}))} : {})};
  compiled.set(key, c);
  if (compiled.size > 64) compiled.delete(compiled.keys().next().value);
  return c;
@@ -113,7 +115,7 @@ async function loadPhoto(blob, name, saved = null) {
   ui.z = 1; ui.tx = ui.ty = 0; fit(); syncBrushLayers(); updateCurve(); syncPanels();
   await loadCurrentStyle(); commit(false);
   renderGrid();
-  if (!saved) lib.setMeta('photo', {blob, name}).catch(() => {});
+  if (!saved) {lib.setMeta('photo', {blob, name}).catch(() => {}); if (shotStyles.length) {shotStyles = []; lib.setMeta('shotStyle', null).catch(() => {}); if (state.styleId?.startsWith('shot:')) {state.styleId = null; await loadCurrentStyle();} refreshLibrary();}}
  } catch (e) {toast(e.message || '無法開啟這張照片');}
  finally {busy(null);}
 }
@@ -585,6 +587,60 @@ function initMenu() {
  });
 }
 
+// ---------- open a shot from the CAM film roll ----------
+// Reads the camera's own roll database (same site) without ever creating or upgrading it.
+function camRoll(id) {
+ return new Promise((resolve, reject) => {
+  const req = indexedDB.open('eigacam-roll', 1);
+  req.onupgradeneeded = () => req.transaction.abort(); // no roll on this device: do not create an empty one
+  req.onerror = () => reject(Error('找不到 CAM 的底片盒'));
+  req.onsuccess = () => {
+   const db = req.result, tx = db.transaction(['shots', 'files']), shot = tx.objectStore('shots').get(id), file = tx.objectStore('files').get(id + ':original');
+   tx.oncomplete = () => {db.close(); shot.result && file.result ? resolve({shot: shot.result, blob: file.result}) : reject(Error('底片盒裡找不到這張照片的原始檔'));};
+   tx.onerror = () => {db.close(); reject(tx.error);};
+  };
+ });
+}
+// The camera crops to the cinema frame and mirrors selfies when it develops; do the same once, here.
+// Camera masks live in full-frame coordinates; move them into the cropped (and mirrored) frame.
+function maskToFrame(m, cr, mirror) {
+ const X = v => {const u = (v - cr.x) / cr.w; return mirror ? 1 - u : u;}, Y = v => (v - cr.y) / cr.h, o = {...m};
+ if (m.type === 'linear') Object.assign(o, {x0: X(m.x0), y0: Y(m.y0), x1: X(m.x1), y1: Y(m.y1)});
+ if (m.type === 'radial') Object.assign(o, {cx: X(m.cx), cy: Y(m.cy), rx: m.rx / cr.w, ry: m.ry / cr.h});
+ return o;
+}
+function shotFrame(width, height, shot) {const cr = cropFor(width, height, shot.ratio || 0), w = Math.round(width * cr.w), h = Math.round(height * cr.h), x = Math.round(width * cr.x), y = Math.round(height * cr.y); return {px: {x, y, w, h}, cr: {x: x / width, y: y / height, w: w / width, h: h / height}};}
+async function frameAsShot(blob, shot) {
+ if (!shot.ratio && !shot.mirror) return blob;
+ const im = await createImageBitmap(blob, {imageOrientation: 'from-image'}), {px, cr} = shotFrame(im.width, im.height, shot);
+ if (Array.isArray(shot.masks)) shot.masks = shot.masks.map(m => maskToFrame(m, cr, shot.mirror));
+ const c = document.createElement('canvas'); c.width = px.w; c.height = px.h;
+ const x = c.getContext('2d'); if (shot.mirror) {x.translate(c.width, 0); x.scale(-1, 1);}
+ x.drawImage(im, px.x, px.y, px.w, px.h, 0, 0, px.w, px.h); im.close?.(); // whole pixels: no resampling
+ try {return await canvasBlob(c, 'image/jpeg', .97);} finally {c.width = c.height = 1;}
+}
+function useShotStyle(desc) {
+ const base = desc && (styleById('cam:' + desc.look) ?? styleById('camr:' + desc.look) ?? styleById('camx:' + desc.look));
+ shotStyles = base ? [{...base, id: 'shot:' + desc.id, name: `${base.name}（拍攝設定）`, pack: '這張照片', virtual: true, dials: desc.dials ?? {}, shotMasks: desc.masks}] : [];
+ return base;
+}
+async function openShot(id) {
+ busy('從底片盒讀取原始檔');
+ let found; try {found = await camRoll(id);} catch (e) {busy(null); toast(e.message); return;}
+ const {shot} = found;
+ let blob; try {blob = await frameAsShot(found.blob, shot);} catch {blob = found.blob;}
+ const d = shot.dials ?? {}, num = (v, lo, hi) => Number.isFinite(v) ? clamp(v, lo, hi) : 0;
+ const desc = {id: shot.id, look: shot.look, dials: d, masks: Array.isArray(shot.masks) ? shot.masks : null}, base = useShotStyle(desc);
+ lib.setMeta('shotStyle', base ? desc : null).catch(() => {});
+ const name = `eigacam-${new Date(shot.created).toISOString().slice(0, 19).replace(/[-:T]/g, '')}.jpg`;
+ const adjust = {...newAdjust(), exposure: num(d.ev, -3, 3), temp: Math.round(num(d.warmth, -50, 50) * 1.067), highlights: num(d.hi, -100, 100), shadows: num(d.sh, -100, 100)};
+ const json = JSON.stringify({styleId: base ? 'shot:' + shot.id : null, strength: Number.isFinite(d.strength) ? clamp(d.strength, 0, 100) : 100, adjust, masks: [], sel: null});
+ busy(null); refreshLibrary();
+ await loadPhoto(blob, name, {json});
+ lib.setMeta('photo', {blob, name}).catch(() => {}); saveSoon();
+ toast(base ? `已用原始檔打開，套用拍攝時的「${base.name}」與參數` : '已用原始檔打開；拍攝時的色彩在 Studio 找不到，請從風格庫重新選');
+}
+
 // ---------- boot ----------
 function setTab(tab) {document.body.dataset.tab = tab; renderHandles(); draw(); if (tab === 'styles') requestAnimationFrame(() => pump());}
 async function boot() {
@@ -620,8 +676,13 @@ async function boot() {
  addEventListener('dragover', e => e.preventDefault());
  addEventListener('drop', e => {e.preventDefault(); depth = 0; $('dropHint').hidden = true; dropped(e);});
  refreshLibrary();
- const saved = await lib.getMeta('photo').catch(() => null);
- if (saved?.blob) await loadPhoto(saved.blob, saved.name, await lib.getMeta('edit').catch(() => null) ?? {json: '{}'});
+ const shotId = new URLSearchParams(location.search).get('shot');
+ if (shotId) {window.history.replaceState(null, '', location.pathname); await openShot(shotId);}
+ else {
+  useShotStyle(await lib.getMeta('shotStyle').catch(() => null)); renderPackFilter(); renderGrid();
+  const saved = await lib.getMeta('photo').catch(() => null);
+  if (saved?.blob) await loadPhoto(saved.blob, saved.name, await lib.getMeta('edit').catch(() => null) ?? {json: '{}'});
+ }
  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
  // Hook for the automated checks in tests/studio-e2e.mjs.
  globalThis.eigastudio = {state, ui, lib, mainR, thumbR, renderNow, compile, styleById, allStyles, runImport, loadPhoto, exportPhoto, renderFull, renderMasks, get photo() {return photo;}, get exportFiles() {return exportFiles;}, get lastReport() {return lastReport;}, get current() {return current;}, get queue() {return queue.size + (pumping ? 1 : 0);}, get tiles() {return tiles;}};

@@ -38,12 +38,14 @@ export function describeLook(def) {
  const look = resolveDef(def); checkLook(look);
  return {name: String(look.name ?? look.id ?? 'eigacam 配方').slice(0, 60), notes: [], partial: false};
 }
-export function compileLook(def, size = 33) {
+// dials: the camera dials a shot was taken with (grain, glow, sharpen); defaults otherwise.
+export function compileLook(def, size = 33, dials = {}) {
  const look = resolveDef(def);
  // Same settings the camera uses with its dials at their defaults (glow at the look's own default, no beauty smoothing).
- const s = renderSettings(look, {ev: 0, strength: 100, grain: 100, glow: look.glowDefault ?? 100, sharpen: 35, warmth: 0, beauty: 0});
+ const d = k => Number.isFinite(dials[k]) ? dials[k] : undefined;
+ const s = renderSettings(look, {ev: 0, strength: 100, grain: d('grain') ?? 100, glow: d('glow') ?? look.glowDefault ?? 100, sharpen: d('sharpen') ?? 35, warmth: 0, beauty: d('beauty') ?? 0});
  const n = (v, lo, hi) => Math.min(hi, Math.max(lo, Number(v) || 0));
- const fx = {sharpen: n(s.sharpen, 0, 1), clarity: n(s.clarity, 0, 1), soft: n(s.soft, 0, 1.5), localClarity: n(s.localClarity, -1, 0), localClarityLow: n(s.localClarityLow, .05, 1) || .595, halation: n(s.halation, 0, 2), bloom: n(s.bloom, 0, 2), glowHue: n(s.glowHue, 0, 360), glowSat: n(s.glowSat ?? .55, 0, 1), skinKeep: n(s.skinKeep, 0, 1)};
+ const fx = {sharpen: n(s.sharpen, 0, 1), clarity: n(s.clarity, 0, 1), soft: n(s.soft, 0, 1.5), localClarity: n(s.localClarity, -1, 0), localClarityLow: n(s.localClarityLow, .05, 1) || .595, halation: n(s.halation, 0, 2), bloom: n(s.bloom, 0, 2), glowHue: n(s.glowHue, 0, 360), glowSat: n(s.glowSat ?? .55, 0, 1), skinKeep: n(s.skinKeep, 0, 1), beauty: n(s.beauty, 0, 1)};
  return {lut: bakeLook(look, size), masks: sanitizeMasks(look.masks ?? []), vignette: n(s.vignette, 0, .6), grain: {amount: n(s.grain, 0, .2), size: n(s.grainSize, .5, 4) || 1.5}, fx};
 }
 
