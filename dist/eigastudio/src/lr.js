@@ -1,6 +1,5 @@
-// Lightroom-style grade used for imported .xmp presets. Derived from eigacam's lightroomTransform
-// (dist/src/color.js) with one hard rule added: all-zero settings are an exact identity, so a preset
-// that only moves one slider changes nothing else.
+// Slider-based grade used for imported .xmp presets. One hard rule: all-zero settings are an exact
+// identity, so a preset that only moves one slider changes nothing else.
 import {toLinear, toDisplay, pointCurve, shaperDecode} from '../../src/color.js';
 
 const BANDS = ['red', 'orange', 'yellow', 'green', 'aqua', 'blue', 'purple', 'magenta'];

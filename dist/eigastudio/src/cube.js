@@ -1,4 +1,4 @@
-// .cube 3D LUT reader (Adobe / Resolve dialects). The table is display-referred: the shader feeds it
+// .cube 3D LUT reader (common dialects). The table is display-referred: the shader feeds it
 // sRGB-encoded values mapped through DOMAIN_MIN..DOMAIN_MAX. Data order is red-fastest, which is
 // exactly the layout of a WebGL 3D texture, so no reordering is needed.
 const MAX_SIZE = 65;

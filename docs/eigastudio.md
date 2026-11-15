@@ -1,6 +1,6 @@
 # EIGASTUDIO · 照片調色工作室
 
-EIGACAM 的 Studio 模式：整包匯入 Lightroom 預設、.cube LUT 與 eigacam 配方，用自己的照片挑色、調整強度、做全圖與局部調整，再以原圖解析度存回裝置。所有運算都在瀏覽器本機完成，照片與風格不會上傳。
+EIGACAM 的 Studio 模式：整包匯入 .xmp 調色預設、.cube LUT 與 eigacam 配方，用自己的照片挑色、調整強度、做全圖與局部調整，再以原圖解析度存回裝置。所有運算都在瀏覽器本機完成，照片與風格不會上傳。
 
 - 網站位置：`dist/eigastudio/`，與 CAM 一起由 GitHub Pages 部署（合併到 `main` 後的網址是 `https://bbcode1111.github.io/eigacam/eigastudio/`）。
 - CAM 右上角有「STUDIO」連結；Studio 左上角的 CAM／STUDIO 切換可以回到相機。
@@ -46,7 +46,7 @@ node tests/studio-e2e.mjs          # 瀏覽器驗收（需要 Playwright 與 Chr
 | `dist/src/photo-delivery.js` | 手機系統分享／儲存 |
 | localStorage `eigacam.recipes`、`eigacam.imports` | 在 CAM 存的配方與匯入的 XMP 會自動出現在 Studio（同一網域） |
 
-沒有沿用的部分：CAM 的光暈、柔焦、膚色獨立渲染、美肌需要多重模糊流程，Studio 第一版不做，匯入這類配方時會標示「部分支援」。`color.js` 的 `lightroomTransform` 在零設定時仍會壓高光，所以 Studio 另寫 `lr.js`，保證所有欄位為 0 時是完全的恆等轉換。
+沒有沿用的部分：CAM 的光暈、柔焦、膚色獨立渲染、美肌需要多重模糊流程，Studio 第一版不做，匯入這類配方時會標示「部分支援」。Studio 的 XMP 調色運算在 `lr.js`，保證所有欄位為 0 時是完全的恆等轉換。
 
 備註：需求裡提到的 `presets.js`、`model.js`、`curves.js` 在這個專案裡不存在，對應的實際檔案是 `looks.js`、`color.js`（曲線在 `color.js` 的 `pointCurve`）。
 
@@ -57,28 +57,24 @@ node tests/studio-e2e.mjs          # 瀏覽器驗收（需要 Playwright 與 Chr
 | fflate | 0.8.3 | MIT | ZIP 串流解壓、風格庫與批次輸出的 ZIP、IndexedDB 內的 deflate。整個 ESM 瀏覽器版放在 `dist/eigastudio/vendor/fflate.js`（91 KB 未壓縮） | npm `fflate@0.8.3` 的 `esm/browser.js` |
 | Tabler Icons | 既有 | MIT | CAM 原有的圖示，Studio 沒有新增 | `dist/assets/icons/` |
 
-評估後沒有引入的：
-
-- **Three.js `LUTCubeLoader`（MIT，r180）**：解析本身約 60 行，但它產生 `Data3DTexture`，要連同 Three.js 核心一起載入。參考它的行為（`LUT_3D_SIZE`、`DOMAIN_MIN/MAX`、紅色最快的順序）後自己寫了 `cube.js`，另外補上 `LUT_3D_INPUT_RANGE`、損壞檔的錯誤訊息、超過 65³ 重新取樣與 Log 輸入判斷。
-- **darktable `src/develop/lightroom.c`（GPL-3.0）**：只參考它選擇匯入哪些欄位（曝光、黑色、暗角、顆粒、參數曲線、HSL、分離色調、清晰度、點曲線）以及「能對應的才轉、其他略過」的做法，沒有複製程式碼。
-- **JSZip／zip.js**：fflate 較小且有串流解壓，可以逐檔處理而不必把整包解到記憶體。
+`.cube` 解析（`cube.js`）、XMP 解析（`xmp.js`）與調色運算（`lr.js`）都是專案自己的程式。
 
 瀏覽器需求：WebGL2、IndexedDB、ES modules（Safari 15+、Chrome／Edge 90+、Firefox 90+）。
 
 ## 格式相容表
 
-Lightroom 的運算是 Adobe 專有的，而且預設是為 RAW 設計；這裡把欄位換算成對已顯影的 JPEG／PNG 合理的結果，不是逐像素重現。App 內「⋯ → 格式相容表」顯示的是同一份資料（`xmp.js` 的 `XMP_FIELDS`）。
+XMP 預設多半是為 RAW 設計的；這裡用 EIGASTUDIO 自己的調色運算，把各欄位套用在已顯影的 JPEG／PNG 上。App 內「⋯ → 格式相容表」顯示的是同一份資料（`xmp.js` 的 `XMP_FIELDS`）。
 
-### Lightroom .xmp
+### .xmp 調色預設
 
 | 項目 | 狀態 | 欄位（crs:） | 說明 |
 |---|---|---|---|
-| 曲線（點曲線，含 RGB 各通道） | 已實作 | `ToneCurvePV2012` `ToneCurvePV2012Red` `ToneCurvePV2012Green` `ToneCurvePV2012Blue` | 節點照原值套用；節點間用保形三次插值，與 Adobe 的樣條略有差異 |
+| 曲線（點曲線，含 RGB 各通道） | 已實作 | `ToneCurvePV2012` `ToneCurvePV2012Red` `ToneCurvePV2012Green` `ToneCurvePV2012Blue` | 節點照原值套用；節點間用保形三次插值，不同軟體的曲線內插可能略有差異 |
 | 飽和度 | 已實作 | `Saturation` | 以亮度為軸的線性飽和度 |
 | 黑白 | 已實作 | `ConvertToGrayscale` `Treatment` | Rec.709 亮度轉灰階 |
 | 曝光 | 近似轉換 | `Exposure2012` | 線性光 ×2^EV，正值加高光滾降 |
 | 對比 | 近似轉換 | `Contrast2012` | 以中灰為支點的 S 曲線 |
-| 高光／陰影 | 近似轉換 | `Highlights2012` `Shadows2012` | 亮度區段加權，不含 Adobe 的局部色調對應 |
+| 高光／陰影 | 近似轉換 | `Highlights2012` `Shadows2012` | 亮度區段加權，不含局部色調對應 |
 | 白色／黑色 | 近似轉換 | `Whites2012` `Blacks2012` |  |
 | 色溫／色調（相對值） | 近似轉換 | `IncrementalTemperature` `IncrementalTint` | JPEG／PNG 用的相對白平衡 |
 | 鮮豔度 | 近似轉換 | `Vibrance` | 低飽和顏色加得多，沒有膚色保護 |
@@ -93,11 +89,11 @@ Lightroom 的運算是 Adobe 專有的，而且預設是為 RAW 設計；這裡�
 | 清晰度／紋理 | 未支援 | `Clarity2012` `Texture` | 需要多尺度局部對比 |
 | 絕對色溫／色調（Kelvin） | 未支援 | `Temperature` `Tint` | 只對 RAW 有意義；JPEG 沒有原始白平衡可換算 |
 | 相機校正 | 未支援 | `ShadowTint` `RedHue` `RedSaturation` `GreenHue` … |  |
-| Profile／Look 查色表 | 未支援 | `Look` `CameraProfile` `LookTable` `RGBTable` … | Adobe 專用編碼或外部 .dcp／profile，無法解碼 |
-| AI 遮色片（主體、天空、背景、人物） | 未支援 | `Mask/Image` | 需要 Adobe 的影像辨識模型 |
+| Profile／Look 查色表 | 未支援 | `Look` `CameraProfile` `LookTable` `RGBTable` … | 專用編碼或外部 profile，無法解碼 |
+| AI 遮色片（主體、天空、背景、人物） | 未支援 | `Mask/Image` | 需要影像辨識模型 |
 | 筆刷遮色片、範圍遮色片、組合遮色片 | 未支援 | `PaintBasedCorrections` `Mask/Paint` `Mask/RangeMask` |  |
 | 點顏色、鏡頭模糊、修復 | 未支援 | `PointColors` `LensBlur` `RetouchInfo` `RetouchAreas` |  |
-| 舊版處理版本的色調欄位 | 未支援 | `Exposure` `Brightness` `Contrast` `Shadows` … | PV2010 以前；請在 Lightroom 更新處理版本後重新匯出 |
+| 舊版處理版本的色調欄位 | 未支援 | `Exposure` `Brightness` `Contrast` `Shadows` … | PV2010 以前；請以新版處理版本重新匯出預設 |
 | 銳利化、雜訊、鏡頭校正、裁切、幾何 | 略過（不提示） | `Sharpness` `LuminanceSmoothing` `ColorNoiseReduction` `LensProfileEnable` … | 不屬於調色，匯入時略過且不提示 |
 
 辨識規則：
@@ -164,9 +160,9 @@ Lightroom 的運算是 Adobe 專有的，而且預設是為 RAW 設計；這裡�
 
 - **手機實機**（iOS Safari、Android Chrome）：完全沒有測過。需要確認的有：一次選取多個 `.xmp`／`.cube` 檔時系統檔案選擇器不會把它們反灰、「分享／儲存到相簿」按鈕出現並能存進相簿、1200 萬畫素照片匯出時的記憶體、真實 GPU 上的效能、加入主畫面後離線開啟。
 - **桌面實機瀏覽器**（Safari、Firefox、有 GPU 的 Chrome）：只在無頭 Chromium 跑過。拖放資料夾的程式路徑沒有自動化測試。
-- **與 Adobe 的輸出比對**：這裡沒有 Lightroom，XMP 換算只驗證了方向、數學性質與實際畫面截圖，沒有和 Lightroom 匯出的同一張照片比對色差。
+- **與其他修圖軟體的輸出比對**：XMP 換算只驗證了方向、數學性質與實際畫面截圖，沒有拿同一張照片在其他軟體套用同一份預設來比對色差。
 - **真實的商業風格包**：測試包是程式產生的。實際的預設包可能有這裡沒涵蓋的寫法（例如元素形式的局部調整、非 UTF-8 檔名的 ZIP）。
-- **XMP 局部調整的座標慣例**：線性／放射漸層的換算依欄位名稱（Full／Zero、Top／Left／Bottom／Right、`LocalExposure2012`×4）實作，未用 Lightroom 匯出的檔案驗證。
+- **XMP 局部調整的座標慣例**：線性／放射漸層的換算依欄位名稱（Full／Zero、Top／Left／Bottom／Right、`LocalExposure2012`×4）實作，未用實際匯出的預設檔驗證。
 - 上百個 65³ LUT 的大型風格庫的儲存用量與速度。
 
 ### 已知限制
@@ -175,5 +171,5 @@ Lightroom 的運算是 Adobe 專有的，而且預設是為 RAW 設計；這裡�
 - 筆刷遮色片以最長邊 1024px 儲存，匯出時放大取樣；細小的筆觸邊緣會比預覽柔一些。
 - 換照片會清除全圖調整與遮色片，保留選用的風格與強度。
 - 縮圖只顯示風格本身，不含目前的全圖調整。
-- 沒有裁切、旋轉、RAW 與影片。Studio 的風格目前不能反向送回 CAM 當取景濾鏡。
+- 沒有裁切、旋轉、RAW 與影片。Studio 的風格目前還不能送到 CAM 當取景濾鏡。
 - ZIP 內的 ZIP 不會展開；加密的 ZIP 會被回報為損壞。
