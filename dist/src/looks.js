@@ -10,12 +10,12 @@ export const LOOKS = [
     id: 'nightcity', code: '01', name: '賽博夜城', en: 'NEON CITY', swatch: ['#071a24', '#1fc2d6', '#ff3ea5'],
     desc: '霓虹被放到最大：招牌、燈光的青、藍、洋紅又濃又亮還會暈開，夜色沉成帶青的深黑；人的膚色維持正常。',
     // neon: boosts only colours that are already saturated (signs, lights). Skin is rendered separately (skin).
-    gain: [1, 1, 1.03], sat: 1.04, neon: 1.5, desatHi: .04,
+    gain: [1, 1, 1.03], sat: 1.04, neon: 2.1, desatHi: .04,
     hues: [[18, 14, 0, 1, 0], [29, 16, -2, 1.2, 0], [48, 18, 0, 1, .005], [60, 16, 0, 1, .005], [105, 22, -8, 1.15, 0], [142, 30, 44, 1.2, .01], [195, 28, -4, 1.6, .04], [262, 28, 14, 1.55, .03], [310, 24, 6, 1.65, .04], [338, 22, 0, 1.5, .03]],
     shadows: [208, .045], highlights: [200, .004],
     tone: { contrast: 1.38, pivot: .48, black: .002, white: .99, knee: .8 },
     print: [[0, 1, 1], [0, 1, 1], [.01, .98, 1]],
-    skin: .85, clarity: .3, vignette: .22,
+    skin: .85, clarity: .3, vignette: .22, glowDefault: 40, // bold colour first; glow kept low so signs stay crisp
     grain: { amount: .03, size: 1.3 }, glow: { halation: .6, bloom: .6, hue: 322, sat: .1 }
   },
   {
@@ -23,12 +23,12 @@ export const LOOKS = [
     desc: '參考 Lightroom 賽博龐克調色：紫色陰影、洋紅高光、青藍霓虹，黃綠被壓掉。',
     // Values copied from a shared Lightroom preset (slider ranges as in Lightroom).
     lr: {
-      basic: {exposure: -.35, contrast: 42, highlights: -40, shadows: -25, whites: 20, blacks: -42, temp: -22, tint: 25, vibrance: 40, saturation: 8},
+      basic: {exposure: -.35, contrast: 50, highlights: -40, shadows: -25, whites: 20, blacks: -42, temp: -22, tint: 25, vibrance: 55, saturation: 18},
       hsl: {red: [15, 55, 5], orange: [15, -25, 5], yellow: [-55, -45, -10], green: [55, -45, -20], aqua: [-25, 48, 8], blue: [-20, 40, -12], purple: [-25, 50, 5], magenta: [0, 0, 0]},
       grading: {shadows: {hue: 285, sat: 35, lum: -10}, midtones: {hue: 290, sat: 25, lum: 0}, highlights: {hue: 320, sat: 45, lum: 8}, blending: 55, balance: -20},
       dehaze: 15
     },
-    detail: .17, vignette: .2, // texture +12 / clarity +22 → extra sharpening; vignette −20
+    detail: .17, vignette: .2, glowDefault: 40, // texture +12 / clarity +22 → extra sharpening; vignette −20
     grain: {amount: .015, size: 1.2}, glow: {halation: .3, bloom: .2, hue: 300}
   },
   {
@@ -91,12 +91,12 @@ LOOKS.push({
  id: 'transformer', code: '06', name: 'Transformer', en: 'TEAL · ORANGE', swatch: ['#0c2f36', '#2a9aa6', '#f0a24a'],
  desc: '好萊塢大片的青橙對比：天空與陰影偏青藍，受光面、膚色和沙土偏暖橙金；中等對比，暗部留細節，高光不過曝。',
  // Blues deepen toward teal, yellows lean orange, greens toward teal; shade goes teal while sunlit surfaces stay amber.
- gain: [.84, .83, .8], sat: 1.08, desatHi: .06, desatSh: .04,
+ gain: [.84, .83, .8], sat: 1.2, desatHi: .06, desatSh: .04,
  hues: [[29, 16, 10, 1.15, 0], [55, 20, 0, 1.35, .02], [80, 18, -10, 1.3, .02], [105, 22, -26, 1.05, 0], [142, 30, 48, .6, -.03], [195, 26, 8, 1.4, -.06], [235, 30, -16, 1.55, -.08], [262, 30, -28, 1.45, -.08], [328, 30, 0, .7, 0]],
  shadows: [210, .05], highlights: [70, .012],
- tone: {contrast: 1.28, pivot: .42, black: .01, white: .985, knee: .82},
+ tone: {contrast: 1.36, pivot: .42, black: .01, white: .985, knee: .82},
  print: [[0, 1, 1], [.004, 1, 1], [.01, 1, .99]],
- vignette: .12,
+ vignette: .12, glowDefault: 30,
  grain: {amount: .022, size: 1.25}, glow: {halation: .12, bloom: .14, hue: 40}
 });
 

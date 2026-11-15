@@ -11,7 +11,7 @@ precision highp sampler3D;
 in vec2 uv;out vec4 frag;
 uniform int op;
 uniform sampler2D src,nearTex,farTex,baseTex;
-uniform float beauty,skinKeep,clarity,soft,indoor,localClarity,localClarityLow;
+uniform float beauty,skinKeep,clarity,soft,indoor,localClarity,localClarityLow,toneHi,toneSh;
 vec3 autoGain=vec3(1.); // indoor mode: exposure and white-balance correction from the scene average
 uniform int taps;
 uniform sampler3D lut;
@@ -96,6 +96,8 @@ void main(){
  float sharpL=max(L+sharpen*(1.-.85*skin*min(beauty*2.,1.))*1.6*d,0.);c*=sharpL*sharpL/max(L*L,1e-6);
  vec2 img=imageCoord(uv);vec3 base=c;float shown=0.;
  for(int i=0;i<8;i++){if(i>=maskCount)break;float m=maskValue(i,img,base);c=adjust(c,m,i);if(i==maskView-1)shown=m;}
+ // Highlights / shadows dials: display-luminance regions, applied as a ratio so hue holds.
+ if(toneHi!=0.||toneSh!=0.){float y0=lum(c),Y=clamp(encode(vec3(y0)).r,0.,1.),Y0=Y;Y+=toneHi*.14*6.75*Y*Y*(1.-Y)+toneSh*.14*6.75*Y*(1.-Y)*(1.-Y);Y=clamp(Y,0.,1.);c*=decode(vec3(Y)).r/max(decode(vec3(Y0)).r,1e-6);}
  // Light emphasis: large-scale dodge and burn against a blurred copy of the scene; gentler on faces.
  if(indoor>0.){float y=lum(c);c*=1.+indoor*.55*(1.-smoothstep(0.,.22,y));} // fill light in the shadows
  if(clarity>0.){float lb=lum(texture(baseTex,uv).rgb),lc=lum(c);c*=clamp(pow((lc+.008)/(lb+.008),clarity*(1.-.6*skin)),.55,1.8);}

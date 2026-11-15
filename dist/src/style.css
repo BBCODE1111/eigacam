@@ -290,3 +290,15 @@ button:focus-visible,[role=slider]:focus-visible{outline:2px solid var(--amber);
 .aspects.modes button{flex:0 0 78px}
 .shutter.exposing span{background:var(--red);transform:scale(.55);border-radius:10px}
 .shutter.exposing::after{content:"";position:absolute;inset:1px;border-radius:50%;background:conic-gradient(var(--amber) calc(var(--p,0)*1turn),transparent 0);-webkit-mask:radial-gradient(circle,transparent 0 33px,#000 33px 37px,transparent 37px);mask:radial-gradient(circle,transparent 0 33px,#000 33px 37px,transparent 37px)}
+
+/* CAM / STUDIO switch, strength meter on the left edge, draggable look wheel on desktop */
+.hud a{pointer-events:auto}
+.mode-switch{position:fixed;z-index:6;top:calc(var(--safe-t) + 8px);left:max(12px,var(--safe-l));display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:rgba(0,0,0,.45);font:700 10px/1 var(--mono);letter-spacing:.08em;flex:none}
+.mode-switch a,.mode-switch span{padding:6px 9px;color:var(--dim);text-decoration:none}
+.mode-switch [aria-current]{background:var(--amber);color:#000}
+.hud{padding-left:calc(max(12px,var(--safe-l)) + 118px)}
+@media (max-width:520px){#hudState,#hudMode,#recDot{display:none}.hud{grid-template-columns:auto 1fr auto}.hud-look{max-width:none;justify-self:center}.hud-right{gap:4px}.hq{padding:5px 6px}}
+.mix-meter{right:auto;left:8px;background:linear-gradient(rgba(255,255,255,.75),rgba(255,255,255,.75)) left/2px 100% no-repeat}
+.mix-meter i{right:auto;left:5px;border-left-color:transparent;border-right-color:var(--amber);margin-left:-4px}
+.mix-meter b{right:auto;left:22px}
+@media (hover:hover) and (pointer:fine){.reel{cursor:grab}.reel.dragging{cursor:grabbing;scroll-snap-type:none}.reel.dragging .look{pointer-events:none}}

@@ -12,6 +12,7 @@ export function renderSettings(look, dials, extra = {}) {
   vignette: look.vignette ?? .12, masks: look.masks ?? [],
   beauty: (dials.beauty ?? 40) / 100, skinKeep: look.skin ?? .3, clarity: look.clarity ?? 0,
   localClarity: (look.localClarity ?? 0) * glow, localClarityLow: look.localClarityLow ?? .595,
+  toneHi: (dials.hi ?? 0) / 100, toneSh: (dials.sh ?? 0) / 100,
   soft: (look.soft ?? 0) * glow, indoor: dials.indoor ? 1 : 0, ...extra
  };
 }
