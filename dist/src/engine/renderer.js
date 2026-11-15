@@ -117,7 +117,7 @@ export class Renderer {
     g.activeTexture(g.TEXTURE1); g.bindTexture(g.TEXTURE_2D, T.nearA.tex);
     g.activeTexture(g.TEXTURE2); g.bindTexture(g.TEXTURE_2D, T.farA.tex);
     g.activeTexture(g.TEXTURE4); g.bindTexture(g.TEXTURE_2D, T.baseA.tex);
-    g.uniform1i(this.loc('taps'), s.taps ?? 12); g.uniform1f(this.loc('beauty'), s.beauty ?? 0); g.uniform1f(this.loc('skinKeep'), s.skinKeep ?? 0); g.uniform1f(this.loc('clarity'), s.clarity ?? 0); g.uniform1f(this.loc('soft'), s.soft ?? 0); g.uniform1f(this.loc('localClarity'), s.localClarity ?? 0); g.uniform1f(this.loc('localClarityLow'), s.localClarityLow ?? .595);
+    g.uniform1i(this.loc('taps'), s.taps ?? 12); g.uniform1f(this.loc('beauty'), s.beauty ?? 0); g.uniform1f(this.loc('skinKeep'), s.skinKeep ?? 0); g.uniform1f(this.loc('clarity'), s.clarity ?? 0); g.uniform1f(this.loc('soft'), s.soft ?? 0); g.uniform1f(this.loc('localClarity'), s.localClarity ?? 0); g.uniform1f(this.loc('localClarityLow'), s.localClarityLow ?? .595); g.uniform1f(this.loc('toneHi'), s.toneHi ?? 0); g.uniform1f(this.loc('toneSh'), s.toneSh ?? 0);
     g.uniform1f(this.loc('halation'), glow ? s.halation : 0); g.uniform1f(this.loc('bloom'), glow ? s.bloom : 0);
     g.uniform1f(this.loc('sharpen'), s.sharpen ?? 0); g.uniform1f(this.loc('strength'), s.strength ?? 1);
     g.uniform1f(this.loc('grainAmount'), s.grain ?? 0); g.uniform1f(this.loc('grainSize'), s.grainSize ?? 1.5);

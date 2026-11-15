@@ -17,6 +17,8 @@ const PARAMS = [
  {key: 'mode', code: 'MODE', label: '模式', type: 'mode', def: 'single'},
  {key: 'ratio', code: 'FRAME', label: '畫幅', type: 'aspect', def: 0},
  {key: 'strength', code: 'MIX', label: '濃度', min: 0, max: 100, step: 1, def: 100, fmt: v => v + '%'},
+ {key: 'hi', code: 'HI', label: '亮部', min: -100, max: 100, step: 5, def: 0, fmt: v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v)},
+ {key: 'sh', code: 'SH', label: '暗部', min: -100, max: 100, step: 5, def: 0, fmt: v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v)},
  {key: 'warmth', code: 'WB', label: '色溫', min: -50, max: 50, step: 1, def: 0, fmt: v => v > 0 ? '暖' + v : v < 0 ? '冷' + -v : '±0'},
  {key: 'grain', code: 'GRAIN', label: '顆粒', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
  {key: 'glow', code: 'GLOW', label: '光暈', min: 0, max: 200, step: 5, def: 100, fmt: v => v + '%'},
@@ -275,7 +277,9 @@ $('photoInput').addEventListener('change', e => {importFiles(e.target.files, '�
 // ---------- look reel ----------
 let flashTimer;
 function selectLook(id, announce = true, scroll = true) {
- prefs.look = id; savePrefs(); const look = lookById(id); syncParams?.();
+ prefs.look = id; const look = lookById(id);
+ prefs.glow = prefs.glowBy?.[id] ?? look.glowDefault ?? 100; // each look has its own amount of glow; your own setting per look is remembered
+ savePrefs(); syncParams?.();
  $('hudLook').textContent = `${look.code} ${look.en}`;
  document.querySelectorAll('#reel .look').forEach(b => {const on = b.dataset.look === id; b.classList.toggle('active', on); b.setAttribute('aria-selected', on); if (on && scroll) b.scrollIntoView({inline: 'center', block: 'nearest', behavior: 'smooth'});});
  if (announce && live) {const f = $('lookFlash'); f.innerHTML = `<b>${look.code}</b><strong>${look.name}</strong><span>${look.en}</span>`; f.classList.add('on'); clearTimeout(flashTimer); flashTimer = setTimeout(() => f.classList.remove('on'), 1100);}
@@ -367,6 +371,16 @@ $('reel').addEventListener('scroll', () => {
  }, 110);
 }, {passive: true});
 
+// Desktop: drag the look wheel with the mouse, or turn it with the scroll wheel.
+{
+ const reel = $('reel'); let drag = null;
+ reel.addEventListener('pointerdown', e => {if (e.pointerType !== 'mouse' || e.button !== 0) return; drag = {x: e.clientX, left: reel.scrollLeft, moved: false};});
+ addEventListener('pointermove', e => {if (!drag) return; const dx = e.clientX - drag.x; if (!drag.moved && Math.abs(dx) < 5) return; drag.moved = true; reel.classList.add('dragging'); reel.scrollLeft = drag.left - dx;});
+ addEventListener('pointerup', () => {if (!drag) return; const moved = drag.moved; drag = null; if (moved) setTimeout(() => reel.classList.remove('dragging'), 0);});
+ reel.addEventListener('click', e => {if (reel.classList.contains('dragging')) {e.preventDefault(); e.stopPropagation();}}, true);
+ reel.addEventListener('wheel', e => {if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return; e.preventDefault(); reel.scrollLeft += e.deltaY;}, {passive: false});
+}
+
 // Viewfinder gestures: swipe sideways to change look, drag up or down for exposure, tap to focus.
 function setEV(v, active = true) {
  v = Math.round(Math.min(2, Math.max(-2, v)) * 10) / 10; const changed = v !== prefs.ev;
@@ -374,17 +388,26 @@ function setEV(v, active = true) {
  const m = $('evMeter'); m.classList.toggle('on', active); m.classList.toggle('set', v !== 0);
  m.firstElementChild.style.top = m.lastElementChild.style.top = 50 - v * 25 + '%'; m.lastElementChild.textContent = PARAMS[0].fmt(v) + ' EV';
 }
-let gesture = null, evTimer;
+// Left half of the viewfinder: drag up or down for look strength. Right half: exposure.
+function setMix(v, active = true) {
+ v = Math.round(Math.min(100, Math.max(0, v))); const changed = v !== prefs.strength;
+ if (changed) {prefs.strength = v; savePrefs(); syncParams(); mainDial.draw(); requestDraw(); if (v === 100 || v === 0) navigator.vibrate?.(6);}
+ const m = $('mixMeter'); m.classList.toggle('on', active);
+ m.firstElementChild.style.top = m.lastElementChild.style.top = 100 - v + '%'; m.lastElementChild.textContent = '濃度 ' + v + '%';
+}
+let gesture = null, evTimer, mixTimer;
 const vf = $('viewfinder');
-vf.addEventListener('pointerdown', e => {if (studio || e.target.closest('button, .handle')) return; gesture = {x: e.clientX, y: e.clientY, ev: prefs.ev, mode: ''}; vf.setPointerCapture(e.pointerId);});
+vf.addEventListener('pointerdown', e => {if (studio || e.target.closest('button, .handle')) return; const r = vf.getBoundingClientRect(); gesture = {x: e.clientX, y: e.clientY, ev: prefs.ev, mix: prefs.strength, left: e.clientX < r.left + r.width / 2, mode: ''}; vf.setPointerCapture(e.pointerId);});
 vf.addEventListener('pointermove', e => {
  if (!gesture) return; const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
- if (!gesture.mode) {if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.4 && (live || still)) gesture.mode = 'ev'; else if (Math.abs(dx) > 16) gesture.mode = 'swipe';}
+ if (!gesture.mode) {if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.4 && (live || still)) gesture.mode = gesture.left ? 'mix' : 'ev'; else if (Math.abs(dx) > 16) gesture.mode = 'swipe';}
  if (gesture.mode === 'ev') {clearTimeout(evTimer); setEV(gesture.ev - dy / 150);}
+ if (gesture.mode === 'mix') {clearTimeout(mixTimer); setMix(gesture.mix - dy / 2.4);}
 });
 vf.addEventListener('pointerup', e => {
  if (!gesture) return; const g = gesture, dx = e.clientX - g.x; gesture = null;
  if (g.mode === 'ev') {evTimer = setTimeout(() => setEV(prefs.ev, false), 900); return;}
+ if (g.mode === 'mix') {mixTimer = setTimeout(() => setMix(prefs.strength, false), 900); return;}
  if (g.mode === 'swipe' && Math.abs(dx) > 50) {const list = allLooks(), i = list.findIndex(l => l.id === prefs.look); selectLook(list[(i + (dx < 0 ? 1 : -1) + list.length) % list.length].id); return;}
  if (!g.mode && live) { // tap: focus reticle, and real focus where the camera supports it
   const f = $('frame').getBoundingClientRect(), x = (e.clientX - f.left) / f.width, y = (e.clientY - f.top) / f.height; if (x < 0 || x > 1 || y < 0 || y > 1) return;
@@ -412,7 +435,7 @@ function openParam(key) {
  if (p?.type === 'masks') {openStudio(); return;}
  activeParam = key;
  $('reel').hidden = !!key; $('aspects').hidden = !['aspect', 'mode'].includes(p?.type); $('aspects').classList.toggle('modes', p?.type === 'mode');
- mainDial.show(p && !p.type ? {...p, label: `${p.label} · ${p.code}`, get: () => prefs[p.key], set: v => {prefs[p.key] = v; savePrefs(); syncParams(); requestDraw(); if (p.key === 'ev') setEV(v, false);}} : null);
+ mainDial.show(p && !p.type ? {...p, label: `${p.label} · ${p.code}`, get: () => prefs[p.key], set: v => {prefs[p.key] = v; if (p.key === 'glow') (prefs.glowBy ??= {})[prefs.look] = v; savePrefs(); syncParams(); requestDraw(); if (p.key === 'ev') setEV(v, false);}} : null);
  if (p?.type === 'aspect') buildAspects(); if (p?.type === 'mode') buildModes();
  if (!key) selectLook(prefs.look, false);
  syncParams();
